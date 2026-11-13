@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_HPP
-#define OPTEST_GENERAL_INDEXER_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_HPP
+#define FLASHINFER_GENERAL_INDEXER_HPP
 
 /**
  * Strategy axes (template = documentation):
@@ -123,4 +123,4 @@ CATLASS_GLOBAL void GeneralIndexerEntryPaged(
         query, key, weights, indices, values, scores, tiling);
 }
 
-#endif // OPTEST_GENERAL_INDEXER_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_HPP

@@ -17,8 +17,8 @@ from flashinfer.runtime import InferenceSpec
 OP = "attention.general_indexer"
 MAX_TOPK = 8192
 MAX_TOTAL = 16384
-MAX_HEAD_DIM = 128
-MAX_HEADS = 256
+MAX_HEAD_DIM = 64
+MAX_HEADS = 64
 MAX_BATCH = 16
 SCORE_WORKSPACE_LIMIT = 1 << 30
 
@@ -36,7 +36,7 @@ def _layout(value, name, allowed):
 
 def _head_dim(value):
     if not 16 <= value <= MAX_HEAD_DIM or value % 16:
-        raise ValueError("head dim must be in [16, 128] and multiple of 16")
+        raise ValueError("head dim must be in [16, 64] and multiple of 16")
 
 
 def _positive(name, value):
@@ -86,7 +86,7 @@ def _meta(arguments):
     if tq > MAX_TOTAL:
         raise ValueError("Tq must be <= 16384")
     if not 1 <= n1 <= MAX_HEADS:
-        raise ValueError("N1 must be in [1, 256]")
+        raise ValueError("N1 must be in [1, 64]")
     _head_dim(d)
     if _dtype(query) not in ("float16", "bfloat16"):
         raise ValueError("query requires float16 or bfloat16")
@@ -143,20 +143,19 @@ def _meta(arguments):
             raise ValueError("paged key requires N2 == 1")
         if kshape[-1] != d or kshape[0] < 1 or kshape[1] < 1:
             raise ValueError("paged key must have positive pages/block_size and matching D")
-        if len(kshape) == 4 and kshape[2] != 1:
-            raise ValueError("paged key requires N2 == 1")
         if tuple(seqused_k.shape) != (batch,) or _dtype(seqused_k) != "int32":
             raise ValueError("seqused_k must be int32 [batch]")
-        if batch > 1 and cu_q is None:
+        if layout_q != "BSND" and batch > 1 and cu_q is None:
             raise ValueError("flat PA with batch > 1 requires cu_seqlens_q")
-        if arguments["return_score"] and max_seq_len_k == 0:
-            raise ValueError("max_seq_len_k is required for paged return_score")
-        if max_seq_len_k == 0:
-            s2 = max(1, int(table.shape[1]) * int(key.shape[1]))
-        else:
-            s2 = max_seq_len_k
+        if max_seq_len_k <= 0:
+            raise ValueError("max_seq_len_k is required for paged execution")
+        if max_seq_len_k > MAX_TOTAL:
+            raise ValueError("max_seq_len_k must be <= 16384")
+        s2 = max_seq_len_k
         tk = batch * s2
     else:
+        if max_seq_len_k:
+            raise ValueError("max_seq_len_k is only valid for layout_k=PA_BBND")
         if table is not None:
             raise ValueError("block_table is only valid for layout_k=PA_BBND")
         if layout_k == "BSND":

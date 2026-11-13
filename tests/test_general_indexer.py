@@ -1,9 +1,9 @@
 """Public contract tests for attention.general_indexer."""
 
-from types import SimpleNamespace
-
 import pytest
+import torch
 
+from flashinfer.ascendc.attention.general_indexer.implementation import IMPLEMENTATION
 from flashinfer.operators.attention.general_indexer.operator import OPERATOR
 
 
@@ -84,3 +84,165 @@ def test_paged_key_uses_seqused_and_block_table():
 def test_invalid_shape_or_attribute_is_rejected(change, match):
     with pytest.raises(ValueError, match=match):
         infer(**change)
+
+
+def test_native_recipe_declares_full_ordered_abi():
+    from flashinfer.ascendc.attention.general_indexer.implementation import NATIVE
+    from flashinfer.jit.recipe import CATLASS_REVISION
+
+    assert NATIVE.kernel_id == (
+        "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+    )
+    assert [item.name for item in NATIVE.tensors] == [
+        "query", "key", "weights", "block_table", "cu_seqlens_q",
+        "cu_seqlens_k", "seqused_q", "seqused_k", "cmp_residual_k",
+        "output_idx_offset", "score_zero_page", "indices", "values", "scores",
+    ]
+    assert len(NATIVE.dtype_signatures) == 6
+    assert NATIVE.build.dependencies[0].revision == CATLASS_REVISION
+    assert NATIVE.allow_jit_fallback is False
+
+
+def test_top_level_export_is_installed():
+    import flashinfer
+
+    assert callable(flashinfer.general_indexer)
+
+
+def test_cpu_golden_is_stable_and_pads_values():
+    import torch
+
+    from flashinfer.operators.attention.general_indexer.cases import golden
+
+    q = torch.tensor([[[1.0], [1.0]], [[2.0], [1.0]]])
+    k = torch.tensor([[1.0], [2.0], [3.0]])
+    w = torch.ones((2, 2))
+    indices, values, scores = golden(
+        torch, q, k, w, 2, return_value=True, return_score=True
+    )
+    assert indices.tolist() == [[2, 1], [2, 1]]
+    assert scores.shape == (2, 3)
+    assert torch.equal(values, torch.gather(scores, 1, indices.long()))
+
+
+def test_paged_requires_explicit_max_seq_len():
+    with pytest.raises(ValueError, match="max_seq_len_k"):
+        infer(
+            layout_k="PA_BBND", key=Tensor((4, 16, 16)),
+            block_table=Tensor((1, 4), "int32"),
+            seqused_k=Tensor((1,), "int32"),
+        )
+
+
+def _torch_arguments(*, layout_q="SND", layout_k="SND", dtype=None, return_value=False,
+                     return_score=False, paged=False):
+    import torch
+    dtype = dtype or torch.float16
+    if layout_q == "BSND":
+        query = torch.zeros(2, 8, 2, 16, dtype=dtype)
+        weights = torch.zeros(2, 8, 2, dtype=dtype)
+        key = torch.zeros(4, 16, 16, dtype=dtype) if paged else torch.zeros(2, 32, 16, dtype=dtype)
+        kwargs = dict(layout_q=layout_q, layout_k=layout_k)
+    else:
+        query = torch.zeros(8, 2, 16, dtype=dtype)
+        weights = torch.zeros(8, 2, dtype=dtype)
+        key = torch.zeros(2, 16, 16, dtype=dtype) if paged else torch.zeros(32, 16, dtype=dtype)
+        kwargs = dict(layout_q=layout_q, layout_k=layout_k)
+    if paged:
+        kwargs.update(block_table=torch.zeros(2 if layout_q == "BSND" else 1, 2, dtype=torch.int32),
+                      seqused_k=torch.full((2 if layout_q == "BSND" else 1,), 32, dtype=torch.int32),
+                      max_seq_len_k=32)
+    elif layout_q == "TND":
+        kwargs.update(cu_seqlens_q=torch.tensor([0, 8], dtype=torch.int32),
+                      cu_seqlens_k=torch.tensor([0, 32], dtype=torch.int32))
+    return OPERATOR.bind(query, key, weights, 4, return_value=return_value,
+                        return_score=return_score, **kwargs)
+
+
+@pytest.mark.parametrize("layout_q,layout_k,paged", [
+    ("SND", "SND", False), ("TND", "TND", False), ("BSND", "BSND", False),
+    ("SND", "PA_BBND", True), ("BSND", "PA_BBND", True),
+])
+def test_fake_metadata_and_dispatch_cover_all_layouts(layout_q, layout_k, paged):
+    from flashinfer.operators.runtime import fake, signature
+    from flashinfer.runtime import HardwareSignature, dispatch
+
+    args = _torch_arguments(layout_q=layout_q, layout_k=layout_k, paged=paged,
+                            return_value=True, return_score=True)
+    outputs = fake(OPERATOR.op, args)
+    assert len(outputs) == 3
+    request, _, _ = signature(OPERATOR.op, args)
+    decision = dispatch(request, HardwareSignature("Ascend950", 28))
+    assert decision.kernel_id == (
+        "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+    )
+
+
+def test_fake_rejects_invalid_contract_and_out_alias():
+    import torch
+
+    from flashinfer.operators.runtime import fake, signature
+
+    args = _torch_arguments()
+    with pytest.raises(ValueError, match="mask_mode"):
+        fake(OPERATOR.op, dict(args, mask_mode=1))
+    outputs = fake(OPERATOR.op, args)
+    overlap = args["query"].view(torch.int32).reshape(8, 16)[:, :4]
+    with pytest.raises(ValueError, match="overlap"):
+        signature(OPERATOR.op, dict(args, out=(overlap, *outputs[1:])))
+    with pytest.raises(ValueError, match="out shape/dtype"):
+        fake(OPERATOR.op, dict(args, out=(outputs[0], torch.zeros(8, 5), outputs[2])))
+
+
+def test_runner_adapts_disabled_outputs_to_hidden_native_buffers():
+    from flashinfer.ascendc.attention.general_indexer.runner import GeneralIndexerRunner
+
+    args = _torch_arguments()
+    invocation = OPERATOR.infer(args, None)
+    outputs = tuple(torch.empty(s.shape, dtype=getattr(torch, s.dtype))
+                    for s in invocation.outputs)
+    observed = []
+    runner = GeneralIndexerRunner(lambda *tensors, **attrs: observed.append((tensors, attrs)))
+    runner(*invocation.inputs, *outputs, **invocation.attributes)
+    tensors, attrs = observed[0]
+    assert len(tensors) == 14
+    assert tensors[11].shape == (8, 4) and tensors[11].data_ptr() != outputs[1].data_ptr()
+    assert tensors[12].shape == (8, 4) and tensors[12].data_ptr() != outputs[1].data_ptr()
+    assert tensors[13].shape == (8, 32) and tensors[13].data_ptr() != outputs[2].data_ptr()
+    assert tensors[0] is args["query"]
+    assert attrs["is_paged"] == 0 and attrs["k"] == 4
+
+
+def test_fake_torch_registration_returns_fixed_three_outputs():
+    from torch._subclasses.fake_tensor import FakeTensorMode
+
+    import flashinfer
+
+    with FakeTensorMode():
+        q = torch.empty(8, 2, 16, dtype=torch.float16)
+        k = torch.empty(32, 16, dtype=torch.float16)
+        w = torch.empty(8, 2, dtype=torch.float16)
+        outputs = flashinfer.general_indexer(q, k, w, 4)
+        assert outputs[0].shape == (8, 4) and outputs[0].dtype == torch.int32
+        assert outputs[1].shape == outputs[2].shape == (0,)
+        supplied = tuple(torch.empty_like(t) for t in outputs)
+        returned = flashinfer.general_indexer(q, k, w, 4, out=supplied)
+        assert all(actual is expected for actual, expected in zip(returned, supplied))
+
+
+def test_prepared_recipe_is_aot_only_pinned_and_not_capturable():
+    from pathlib import Path
+
+    from flashinfer.jit.recipe import CATLASS_REVISION
+    from flashinfer.runtime import GraphCapability
+
+    root = Path(__file__).resolve().parents[1]
+    prepared = IMPLEMENTATION.prepare_outputs(root)
+    descriptor, recipe = prepared["descriptor"], prepared["recipe"]
+    assert descriptor.graph_capability == GraphCapability.NOT_CAPTURABLE
+    assert descriptor.capability_binding.domain == "operator"
+    assert recipe.allow_jit_fallback is False
+    assert recipe.target_soc == "Ascend950"
+    assert recipe.package_op_type == "FiGeneralIndexer"
+    assert recipe.dependencies[0].revision == CATLASS_REVISION
+    assert len(recipe.tensor_parameters) == 14 and len(recipe.attributes) == 5

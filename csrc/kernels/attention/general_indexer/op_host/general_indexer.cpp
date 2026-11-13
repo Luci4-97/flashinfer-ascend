@@ -66,16 +66,12 @@ ge::graphStatus Infer(gert::InferShapeContext* context)
     const auto& kshape = *key;
     const int64_t tq = q.GetDim(0);
     const int64_t d = q.GetDim(2);
-    int64_t blockSize = 0;
-    int64_t pages = 0;
     int64_t tk = 0;
     const int64_t isPaged = Attr<int64_t>(context, 1, 0);
     const int64_t topk = Attr<int64_t>(context, 0, 0);
     const int64_t maxSeq = Attr<int64_t>(context, 4, 0);
     if (isPaged != 0) {
         if (kshape.GetDimNum() != 3 || kshape.GetDim(2) != d) return ge::GRAPH_FAILED;
-        pages = kshape.GetDim(0);
-        blockSize = kshape.GetDim(1);
         const auto* cuQ = context->GetInputShape(CU_Q);
         int64_t batch = 1;
         if (cuQ != nullptr && cuQ->GetDimNum() == 1) batch = cuQ->GetDim(0) - 1;
@@ -85,8 +81,6 @@ ge::graphStatus Infer(gert::InferShapeContext* context)
         if (kshape.GetDimNum() != 2 || kshape.GetDim(1) != d) return ge::GRAPH_FAILED;
         tk = kshape.GetDim(0);
     }
-    (void)pages;
-    (void)blockSize;
     if (tq <= 0 || tk <= 0 || topk <= 0) return ge::GRAPH_FAILED;
     auto* indices = context->GetOutputShape(0);
     auto* values = context->GetOutputShape(1);
@@ -114,27 +108,26 @@ ge::graphStatus InferType(gert::InferDataTypeContext* context)
 
 ge::graphStatus FiGeneralIndexerTiling(gert::TilingContext* context)
 {
-    auto fail = [](int) { return ge::GRAPH_FAILED; };
     try {
         const auto* queryTensor = context->GetInputTensor(QUERY);
         const auto* keyTensor = context->GetInputTensor(KEY);
         const auto* weightsTensor = context->GetInputTensor(WEIGHTS);
         if (queryTensor == nullptr || keyTensor == nullptr || weightsTensor == nullptr) {
-            return fail(1);
+            return ge::GRAPH_FAILED;
         }
         const auto& qs = queryTensor->GetStorageShape();
         const auto& ws = weightsTensor->GetStorageShape();
         const auto& ks = keyTensor->GetStorageShape();
         if (qs.GetDimNum() != 3 || ws.GetDimNum() != 2 ||
             (ks.GetDimNum() != 2 && ks.GetDimNum() != 3)) {
-            return fail(2);
+            return ge::GRAPH_FAILED;
         }
         const int64_t tq = qs.GetDim(0);
         const int64_t n1 = qs.GetDim(1);
         const int64_t d = qs.GetDim(2);
         if (tq <= 0 || n1 <= 0 || d <= 0 || ws.GetDim(0) != tq || ws.GetDim(1) != n1 ||
             ks.GetDim(ks.GetDimNum() - 1) != d) {
-            return fail(3);
+            return ge::GRAPH_FAILED;
         }
 
         const int64_t isPaged = Attr<int64_t>(context, 1, 0);
@@ -148,15 +141,15 @@ ge::graphStatus FiGeneralIndexerTiling(gert::TilingContext* context)
         int64_t blockSize = 0;
         int64_t maxBlocks = 0;
         if (isPaged != 0) {
-            if (ks.GetDimNum() != 3 || maxSeq <= 0) return fail(4);
+            if (ks.GetDimNum() != 3 || maxSeq <= 0) return ge::GRAPH_FAILED;
             pages = ks.GetDim(0);
             blockSize = ks.GetDim(1);
             const auto* table = context->GetInputTensor(BLOCK_TABLE);
-            if (table == nullptr) return fail(5);
+            if (table == nullptr) return ge::GRAPH_FAILED;
             maxBlocks = table->GetStorageShape().GetDim(1);
             tk = batch * maxSeq;
         } else {
-            if (ks.GetDimNum() != 2) return fail(6);
+            if (ks.GetDimNum() != 2) return ge::GRAPH_FAILED;
             tk = ks.GetDim(0);
         }
 
@@ -174,9 +167,8 @@ ge::graphStatus FiGeneralIndexerTiling(gert::TilingContext* context)
         params.sequsedQ = DataOf(context, SEQ_Q);
         params.sequsedK = DataOf(context, SEQ_K);
         params.cmpResidualK = DataOf(context, CMP_RESIDUAL);
-        params.blockTable = DataOf(context, BLOCK_TABLE);
-        params.outputIdxOffset = DataOf(context, IDX_OFFSET);
-        params.zeroPage = DataOf(context, ZERO_PAGE);
+        params.hasBlockTable = context->GetInputTensor(BLOCK_TABLE) != nullptr;
+        params.hasOutputIdxOffset = context->GetInputTensor(IDX_OFFSET) != nullptr;
         params.maskMode = static_cast<int32_t>(Attr<int64_t>(context, 2, 0));
         params.cmpRatio = static_cast<int32_t>(Attr<int64_t>(context, 3, 1));
         params.isPaged = static_cast<uint32_t>(isPaged);
@@ -185,15 +177,13 @@ ge::graphStatus FiGeneralIndexerTiling(gert::TilingContext* context)
         params.numPages = static_cast<uint32_t>(pages);
 
         auto* data = context->GetTilingData<GeneralIndexerTilingData>();
-        if (data == nullptr) return fail(7);
+        if (data == nullptr) return ge::GRAPH_FAILED;
         *data = {};
-        uint64_t scoreWorkspaceBytes = 0;
-        GeneralIndexerTiling::GetTiling(params, *data, scoreWorkspaceBytes);
-        (void)scoreWorkspaceBytes;
+        GeneralIndexerTiling::GetTiling(params, *data);
 
         platform_ascendc::PlatformAscendC platform(context->GetPlatformInfo());
         const uint32_t cores = platform.GetCoreNumAic();
-        if (cores == 0) return fail(8);
+        if (cores == 0) return ge::GRAPH_FAILED;
         context->SetBlockDim(cores);
         context->SetTilingKey(isPaged != 0 ? 1 : 0);
         context->GetWorkspaceSizes(1)[0] = platform.GetLibApiWorkSpaceSize();

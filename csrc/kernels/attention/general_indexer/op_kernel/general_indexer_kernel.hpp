@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_KERNEL_HPP
-#define OPTEST_GENERAL_INDEXER_KERNEL_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_KERNEL_HPP
+#define FLASHINFER_GENERAL_INDEXER_KERNEL_HPP
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/detail/alignment.hpp"
@@ -92,7 +92,7 @@ public:
         if ASCEND_IS_AIV {
             BlockTopK blockTopK(
                 resource_, scores, outIndices, tiling->k, tiling->s2, tiling->s2Tile, gmOutputIdxOffset,
-                tiling->hasOutputIdxOffset != 0, outValues, true);
+                tiling->hasOutputIdxOffset != 0, outValues);
             while (blockScheduler.GetNextTopKCoord(qStart, actualQ, kStart, actualK)) {
                 blockTopK(qStart, actualQ, kStart, actualK);
             }
@@ -107,4 +107,4 @@ private:
     AscendC::LocalTensor<typename BlockMmad::DtypeC> ubC_;
 };
 
-#endif // OPTEST_GENERAL_INDEXER_KERNEL_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_KERNEL_HPP

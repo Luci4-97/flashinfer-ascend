@@ -3,8 +3,8 @@
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
-#define OPTEST_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
+#define FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
 
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/gemm/tile/tile_copy.hpp"
@@ -164,4 +164,4 @@ private:
 
 } // namespace GeneralIndexer::Block
 
-#endif // OPTEST_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP

@@ -37,9 +37,8 @@ struct Params {
     const void* sequsedQ{nullptr};
     const void* sequsedK{nullptr};
     const void* cmpResidualK{nullptr};
-    const void* blockTable{nullptr};
-    const void* outputIdxOffset{nullptr};
-    const void* zeroPage{nullptr};
+    bool hasBlockTable{false};
+    bool hasOutputIdxOffset{false};
     int32_t maskMode{0};
     int32_t cmpRatio{1};
     uint32_t isPaged{0};
@@ -49,8 +48,7 @@ struct Params {
 };
 
 
-inline void GetTiling(
-    const Params& params, GeneralIndexerTilingData& tilingData, uint64_t& workspaceSize)
+inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData)
 {
     if (params.s1 == 0 || params.n1 == 0 || params.s2 == 0 || params.d == 0) {
         throw std::invalid_argument("GeneralIndexerTiling: s1, n1, s2 and d must be positive");
@@ -72,7 +70,6 @@ inline void GetTiling(
 
     uint32_t batch = params.batch == 0 ? 1U : params.batch;
     tilingData.hasCuSeqlens = 0;
-    uint32_t maxQLen = params.s1;
     if (!hasCuQ) {
         if (batch != 1) {
             throw std::invalid_argument("GeneralIndexerTiling: batch must be 1 without cu_seqlens");
@@ -100,20 +97,14 @@ inline void GetTiling(
         if (static_cast<uint32_t>(cuQ[batch]) != params.s1 || static_cast<uint32_t>(cuK[batch]) != params.s2) {
             throw std::invalid_argument("GeneralIndexerTiling: cu_seqlens end must equal s1/s2");
         }
-        maxQLen = 0;
         for (uint32_t b = 0; b < batch; ++b) {
             if (cuQ[b + 1] < cuQ[b] || cuK[b + 1] < cuK[b]) {
                 throw std::invalid_argument("GeneralIndexerTiling: cu_seqlens must be non-decreasing");
             }
-            const uint32_t qLen = static_cast<uint32_t>(cuQ[b + 1] - cuQ[b]);
             const uint32_t kLen = static_cast<uint32_t>(cuK[b + 1] - cuK[b]);
-            maxQLen = std::max(maxQLen, qLen);
             if (kLen > 0 && params.k > kLen) {
                 throw std::invalid_argument("GeneralIndexerTiling: k must be <= each request's key length");
             }
-        }
-        if (maxQLen == 0) {
-            maxQLen = params.s1;
         }
         tilingData.hasCuSeqlens = 1;
         for (uint32_t i = 0; i <= batch; ++i) {
@@ -130,16 +121,13 @@ inline void GetTiling(
     tilingData.batch = batch;
     tilingData.maskMode = params.maskMode;
     tilingData.cmpRatio = params.cmpRatio <= 0 ? 1 : params.cmpRatio;
-    tilingData.outputIdxOffsetPtr = reinterpret_cast<uint64_t>(params.outputIdxOffset);
-    tilingData.hasOutputIdxOffset = params.outputIdxOffset != nullptr ? 1U : 0U;
+    tilingData.hasOutputIdxOffset = params.hasOutputIdxOffset ? 1U : 0U;
     tilingData.isPaged = params.isPaged;
     tilingData.blockSize = params.blockSize;
     tilingData.maxBlocksPerBatch = params.maxBlocksPerBatch;
     tilingData.numPages = params.numPages;
-    tilingData.blockTablePtr = reinterpret_cast<uint64_t>(params.blockTable);
-    tilingData.zeroPagePtr = reinterpret_cast<uint64_t>(params.zeroPage);
     if (params.isPaged) {
-        if (params.blockTable == nullptr || params.blockSize == 0 || params.numPages == 0 ||
+        if (!params.hasBlockTable || params.blockSize == 0 || params.numPages == 0 ||
             params.maxBlocksPerBatch == 0) {
             throw std::invalid_argument(
                 "GeneralIndexerTiling: paged Key requires blockTable, blockSize, numPages, maxBlocks");
@@ -218,7 +206,6 @@ inline void GetTiling(
                                   256;
     const uint32_t l0cRows = kL0cSize / (s2Split * static_cast<uint32_t>(sizeof(float)));
     tilingData.s2Tile = s2Tile;
-    (void)maxQLen;
     // Capacity may exceed params.s1 so Reduce can pad actualS1 to 8 (D1).
     uint32_t s1Tile = static_cast<uint32_t>(kUbSize / ubBytesPerS1);
     while (s1Tile > 0 && GeneralIndexerAlign::AlignUp(s1Tile * params.n1, cubeFractalM) > l0cRows) {
@@ -239,8 +226,6 @@ inline void GetTiling(
         throw std::invalid_argument("GeneralIndexerTiling: s1Tile is zero under UB/L0C limits");
     }
 
-    // Score workspace only; paged zero-page buffer is allocated separately by the host (M4.1).
-    workspaceSize = static_cast<uint64_t>(params.s1) * params.s2 * sizeof(float);
 }
 
 } // namespace GeneralIndexerTiling

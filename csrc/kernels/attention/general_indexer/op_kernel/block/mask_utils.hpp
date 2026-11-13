@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
-#define OPTEST_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
+#define FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
 
 #include <cstdint>
 #include "kernel_operator.h"
@@ -52,4 +52,4 @@ CATLASS_DEVICE uint32_t Mask3VisibleLen(
 
 } // namespace GeneralIndexer::Block
 
-#endif // OPTEST_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP

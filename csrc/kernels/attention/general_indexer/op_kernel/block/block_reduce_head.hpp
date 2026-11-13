@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP
-#define OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP
+#define FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP
 
 #include <cstdint>
 #include <type_traits>
@@ -323,4 +323,4 @@ private:
 
 } // namespace GeneralIndexer::Block
 
-#endif // OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP

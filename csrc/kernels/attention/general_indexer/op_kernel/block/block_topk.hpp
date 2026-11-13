@@ -3,8 +3,8 @@
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
-#define OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
+#define FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
@@ -278,7 +278,7 @@ public:
         AscendC::GlobalTensor<DtypeScore> const& workspace, AscendC::GlobalTensor<DtypeOut> const& outIndices,
         uint32_t topK, uint32_t s2Stride, uint32_t s2Tile,
         AscendC::GlobalTensor<int32_t> const& outputIdxOffset, bool hasOutputIdxOffset,
-        AscendC::GlobalTensor<DtypeScore> const& outValues, bool hasSparseValues)
+        AscendC::GlobalTensor<DtypeScore> const& outValues)
         : gmScores_(workspace),
           gmOut_(outIndices),
           gmValues_(outValues),
@@ -287,7 +287,6 @@ public:
           s2Stride_(s2Stride),
           s2Tile_(s2Tile),
           hasOutputIdxOffset_(hasOutputIdxOffset),
-          hasSparseValues_(hasSparseValues),
           tileColAlign_(GeneralIndexerAlign::AlignUp(s2Tile_, kFloatBlock))
     {
         const uint32_t kTopAlign = GeneralIndexerAlign::AlignUp(topK, 256u);
@@ -373,25 +372,19 @@ public:
             for (uint32_t i = 0; i < topK_; ++i) {
                 if (i >= stateCount) {
                     outIdxUb.SetValue(i, static_cast<DtypeOut>(-1));
-                    if (hasSparseValues_) {
-                        valueUb_.SetValue(i, negInf.f);
-                    }
+                    valueUb_.SetValue(i, negInf.f);
                 } else {
                     outIdxUb.SetValue(
                         i, static_cast<DtypeOut>(static_cast<int32_t>(stateIdxUb_.GetValue(i)) + rowOff));
-                    if (hasSparseValues_) {
-                        valueUb_.SetValue(i, detail::SortableU32ToFloat(stateKeyUb_.GetValue(i)));
-                    }
+                    valueUb_.SetValue(i, detail::SortableU32ToFloat(stateKeyUb_.GetValue(i)));
                 }
             }
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::DataCopyPad(gmOut_[s1Row * topK_], outIdxUb, copyOut);
-            if (hasSparseValues_) {
-                AscendC::DataCopyExtParams copyVal{
-                    1, static_cast<uint32_t>(topK_ * sizeof(DtypeScore)), 0, 0, 0};
-                AscendC::DataCopyPad(gmValues_[s1Row * topK_], valueUb_, copyVal);
-            }
+            AscendC::DataCopyExtParams copyVal{
+                1, static_cast<uint32_t>(topK_ * sizeof(DtypeScore)), 0, 0, 0};
+            AscendC::DataCopyPad(gmValues_[s1Row * topK_], valueUb_, copyVal);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         }
@@ -414,10 +407,9 @@ private:
     uint32_t s2Stride_{0};
     uint32_t s2Tile_{0};
     bool hasOutputIdxOffset_{false};
-    bool hasSparseValues_{false};
     uint32_t tileColAlign_{0};
 };
 
 } // namespace GeneralIndexer::Block
 
-#endif // OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP

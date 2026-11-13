@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP
-#define OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP
+#define FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP
 
 #include <cstdint>
 #include "catlass/detail/alignment.hpp"
@@ -26,7 +26,6 @@ namespace GeneralIndexer::Block {
  */
 class BlockScheduler {
 public:
-    static constexpr uint32_t n2 = 1;
     static constexpr uint32_t kMaxBatch = GeneralIndexerTilingData::kMaxBatch;
 
     CATLASS_DEVICE
@@ -154,4 +153,4 @@ private:
 
 } // namespace GeneralIndexer::Block
 
-#endif // OPTEST_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP

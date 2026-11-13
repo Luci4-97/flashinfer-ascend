@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OPTEST_GENERAL_INDEXER_TILING_DATA_HPP
-#define OPTEST_GENERAL_INDEXER_TILING_DATA_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_TILING_DATA_H
+#define FLASHINFER_GENERAL_INDEXER_TILING_DATA_H
 
 #include <cstdint>
 
@@ -25,13 +25,13 @@ CATLASS_HOST_DEVICE constexpr uint32_t AlignUp(const T& value, const U& alignmen
 } // namespace GeneralIndexerAlign
 
 /**
- * @brief Device-visible tiling for example 99_general_indexer.
+ * @brief Device-visible tiling for the general indexer.
  *
- * Host embeds cu_seqlens / seqused / cmp residual so AIC/AIV can schedule and mask
- * without GetValue on separate GM buffers.
+ * Host embeds cu_seqlens / seqused / cmp residual so AIC/AIV can schedule and
+ * mask without GetValue on separate GM buffers. Runtime Tensor addresses are
+ * passed explicitly to the kernel entry and are never cached in tiling data.
  */
 struct GeneralIndexerTilingData {
-    static constexpr uint32_t n2 = 1;
     static constexpr uint32_t kMaxBatch = 16;
 
     uint32_t s1{0};
@@ -52,21 +52,13 @@ struct GeneralIndexerTilingData {
     int32_t sequsedQ[kMaxBatch]{0};
     int32_t sequsedK[kMaxBatch]{0};
     int32_t cmpResidualK[kMaxBatch]{0};
-    /// Device pointer to int32[S1] (or contiguous [S1,1]); 0 when unused.
-    uint64_t outputIdxOffsetPtr{0};
     uint32_t hasOutputIdxOffset{0};
 
-    /// Device pointer to float32[S1, k] sparse TopK values (D2b); 0 when unused.
-    uint64_t sparseValuesPtr{0};
-    uint32_t hasSparseValues{0};
-
-    // M4.1 PA_BBND in-kernel paging (0 / nullptr when contiguous).
+    // PA_BBND in-kernel paging metadata. Tensor pointers are kernel arguments.
     uint32_t isPaged{0};
     uint32_t blockSize{0};
     uint32_t maxBlocksPerBatch{0};
     uint32_t numPages{0};
-    uint64_t blockTablePtr{0}; ///< int32[B, maxBlocksPerBatch]
-    uint64_t zeroPagePtr{0};   ///< DtypeK[blockSize * D] zeros for illegal pages
 };
 
-#endif // OPTEST_GENERAL_INDEXER_TILING_DATA_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_TILING_DATA_H
