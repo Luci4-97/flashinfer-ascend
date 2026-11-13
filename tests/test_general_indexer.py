@@ -1,5 +1,7 @@
 """Public contract tests for attention.general_indexer."""
 
+import os
+
 import pytest
 import torch
 
@@ -265,3 +267,36 @@ def test_production_inventory_declares_general_indexer_exactly():
     ) for row in PRODUCTION)
     assert len(PRODUCTION) == STACK_COUNTS["ascendc"] == 6
     assert DEFAULT_DESCRIPTOR_COUNT == 87
+
+
+def test_real_release_environment_is_process_local(monkeypatch, tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    import flashinfer.operators.pytest_support as support
+
+    test_file = Path(__file__).with_name("test_general_indexer_real.py")
+    spec = importlib.util.spec_from_file_location("_general_indexer_real_contract", test_file)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    monkeypatch.setattr(
+        support,
+        "prepare_release",
+        lambda *_args: {
+            "FLASHINFER_AOT_PATHS": str(tmp_path / "release"),
+            "FLASHINFER_ACLNN_ADAPTER_PATH": str(tmp_path / "adapter"),
+        },
+    )
+    monkeypatch.setenv("FLASHINFER_NPU_JIT_DISABLE", "0")
+
+    class Factory:
+        def mktemp(self, name):
+            return tmp_path / name
+
+    release = module.general_indexer_environment.__wrapped__(Factory())
+    assert release["FLASHINFER_AOT_PATHS"] == str(tmp_path / "release")
+    assert release["FLASHINFER_ACLNN_ADAPTER_PATH"] == str(tmp_path / "adapter")
+    assert release["FLASHINFER_NPU_JIT_DISABLE"] == "1"
+    assert os.environ["FLASHINFER_NPU_JIT_DISABLE"] == "0"
+    assert "FLASHINFER_AOT_PATHS" not in os.environ
