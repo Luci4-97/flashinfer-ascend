@@ -246,3 +246,22 @@ def test_prepared_recipe_is_aot_only_pinned_and_not_capturable():
     assert recipe.package_op_type == "FiGeneralIndexer"
     assert recipe.dependencies[0].revision == CATLASS_REVISION
     assert len(recipe.tensor_parameters) == 14 and len(recipe.attributes) == 5
+
+
+def test_production_inventory_declares_general_indexer_exactly():
+    from tests.production_inventory import (
+        DEFAULT_DESCRIPTOR_COUNT,
+        PRODUCTION,
+        PRODUCTION_KERNEL_IDS,
+        PRODUCTION_OPS,
+        STACK_COUNTS,
+    )
+
+    kernel_id = "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+    assert kernel_id in PRODUCTION_KERNEL_IDS
+    assert "attention.general_indexer" in PRODUCTION_OPS
+    assert any(row[0] == kernel_id and row[1:] == (
+        "attention.general_indexer", "general_indexer", "catlass", "Ascend950"
+    ) for row in PRODUCTION)
+    assert len(PRODUCTION) == STACK_COUNTS["ascendc"] == 6
+    assert DEFAULT_DESCRIPTOR_COUNT == 87
