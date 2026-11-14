@@ -289,7 +289,8 @@ def validate_values(arguments):
     table = arguments["block_table"]
     offset = arguments["output_idx_offset"]
 
-    q_lens = [meta.s1] * meta.batch if meta.layout_q == "BSND" else [None] * meta.batch
+    q_lens = ([meta.s1] * meta.batch if meta.layout_q == "BSND"
+              else [meta.tq] * meta.batch)
     k_lens = [meta.s2] * meta.batch
     if cu_q is not None:
         q = cu_q.cpu().tolist()
@@ -311,13 +312,13 @@ def validate_values(arguments):
         values = seq_k.cpu().tolist()
         if any(v < 0 or v > k_lens[i] for i, v in enumerate(values)):
             raise ValueError("seqused_k must be in [0, request key length]")
+    if meta.k and any(length and meta.k > length for length in k_lens):
+        raise ValueError("k must not exceed any request key length")
     if residual is not None:
         ratio = arguments["cmp_ratio"]
         if any(v < 0 or v >= ratio for v in residual.cpu().tolist()):
             raise ValueError("cmp_residual_k must satisfy 0 <= residual < cmp_ratio")
     if table is not None:
-        if meta.k and any(length and meta.k > length for length in k_lens):
-            raise ValueError("k must not exceed any request key length")
         used = seq_k.cpu().tolist()
         block = int(arguments["key"].shape[1])
         width = int(table.shape[1])

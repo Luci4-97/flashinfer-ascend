@@ -136,6 +136,30 @@ def test_paged_requires_explicit_max_seq_len():
         )
 
 
+def test_flat_seqused_q_without_cu_seqlens_is_accepted():
+    arguments = args(seqused_q=torch.tensor([5], dtype=torch.int32))
+    OPERATOR.validate_values(arguments)
+
+
+@pytest.mark.parametrize("change", [
+    dict(k=8, key=Tensor((4, 16))),
+    dict(
+        layout_q="TND", layout_k="TND", k=4,
+        key=Tensor((32, 16)),
+        cu_q=torch.tensor([0, 4, 8], dtype=torch.int32),
+        cu_k=torch.tensor([0, 2, 32], dtype=torch.int32),
+    ),
+    dict(
+        layout_q="BSND", layout_k="BSND", k=8,
+        query=Tensor((2, 4, 2, 16)), key=Tensor((2, 4, 16)),
+        weights=Tensor((2, 4, 2)),
+    ),
+])
+def test_k_must_not_exceed_any_request_key_length(change):
+    with pytest.raises(ValueError, match="k must not exceed"):
+        OPERATOR.validate_values(args(**change))
+
+
 def _torch_arguments(*, layout_q="SND", layout_k="SND", dtype=None, return_value=False,
                      return_score=False, paged=False):
     import torch
@@ -173,6 +197,22 @@ def test_fake_metadata_and_dispatch_cover_all_layouts(layout_q, layout_k, paged)
                             return_value=True, return_score=True)
     outputs = fake(OPERATOR.op, args)
     assert len(outputs) == 3
+    request, _, _ = signature(OPERATOR.op, args)
+    decision = dispatch(request, HardwareSignature("Ascend950", 28))
+    assert decision.kernel_id == (
+        "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+    )
+
+
+def test_paged_4d_key_dispatches_exactly():
+    from flashinfer.operators.runtime import fake, signature
+    from flashinfer.runtime import HardwareSignature, dispatch
+
+    args = _torch_arguments(layout_q="SND", layout_k="PA_BBND", paged=True,
+                            return_value=True, return_score=True)
+    args["key"] = args["key"].unsqueeze(2)
+    outputs = fake(OPERATOR.op, args)
+    assert outputs[0].shape == (8, 4)
     request, _, _ = signature(OPERATOR.op, args)
     decision = dispatch(request, HardwareSignature("Ascend950", 28))
     assert decision.kernel_id == (

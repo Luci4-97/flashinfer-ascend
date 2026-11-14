@@ -232,3 +232,71 @@ spec=e856e24e7794bb4654e44b3c53037111c3d6ae1522c5af6e3e8d876926fc0aaa
 - 多进程/多卡并发：未验证。
 - D=128、N1>64：未支持；不得由当前保守 envelope 外推。
 - 修复测试隔离后的全量 `full`：尚未重跑；当前只有定向真机与 quick 通过。
+
+## 9. eager 边界补强与 full 复核（2026-11-15）
+
+本轮按 TDD 补齐 eager 路径边界，修复以下问题：
+
+- flat/SND/TND 只传 `seqused_q` 而不传 `cu_seqlens_q` 时，request query length 使用 `Tq`：`flashinfer/operators/attention/general_indexer/operator.py:292`。
+- `k <= 每个 request key length` 检查覆盖 SND/TND/BSND/PA，而非仅 PA：`operator.py:316`。
+- PA_BBND 4D key `[pages, block, 1, D]` 在 native admission 前归一化：`flashinfer/ascendc/attention/general_indexer/runner.py:189`。
+- 零长度 key request 也发出 TopK tile，并写 `indices=-1`、`values=-inf`：`csrc/kernels/attention/general_indexer/op_kernel/block/block_scheduler.hpp:62`、`:128`，`block_topk.hpp:317`。
+
+新增 eager 真机用例：
+
+- flat `seqused_q` 无 cu。
+- PA_BBND 4D key + batch offset。
+- 默认 backend + hidden outputs + out identity。
+- 零长度 key request。
+
+定向验证：
+
+```text
+tests/test_general_indexer.py \
+  tests/test_general_indexer_real.py \
+  tests/test_operator_packages_real.py \
+  -k general_indexer
+46 passed, 12 deselected, 0 skipped
+```
+
+零长度 request 另在重建 wheel 的干净安装环境中通过；运行时未设置
+`FLASHINFER_AOT_PATHS`、`FLASHINFER_ACLNN_ADAPTER_PATH`，且
+`FLASHINFER_NPU_JIT_DISABLE=1`。
+
+当前 general_indexer spec：
+
+```text
+326a2ba71d2a97dfee4e425338784c5ec6d48ab65de9b6f200fa03daf4144700
+```
+
+候选 wheel：
+
+```text
+/tmp/fi-gi-step3-wheel.8yHrbE/dist/flashinfer-0.1.0.dev0-py3-none-linux_x86_64.whl
+sha256=e0431272b9eb27a3683f471835af653021571cf6d690e839652a85ecbaee471b
+```
+
+仓库级 full 已重跑，日志目录
+`build/regression/20261115-031927-073380/`，实际结果：
+
+```text
+2403 passed, 28 failed, 21 errors, 6 skipped, 404 subtests passed in 1216.22s
+exit_code=1
+```
+
+full 内全部 46 个 general_indexer 用例通过，无 general_indexer 失败或 skip。
+其余 49 个 failure/error 的分类合计与总数一致：
+
+- target 不适用：17。Ascend910B 的生产实现或 sparse A2 用例在 Ascend950 上按目标筛选失败。
+- ACLNN adapter 路径缺失：10。legacy AOT/flash/matmul 子进程未继承
+  `FLASHINFER_ACLNN_ADAPTER_PATH`；补设该路径后，抽验
+  `tests/test_flash_attention_real.py::test_flash_attention_golden_multiple_shapes` 为 `1 passed`。
+- `torch_npu.npu.set_task_queue_enable` 不存在：9。
+- `triton` 未安装：8。
+- Inductor 不支持 NPU：5。
+
+6 个 skip 全部为 `could not import 'triton': No module named 'triton'`。
+
+因此 P5 的 full 门槛仍未关闭，但当前证据不支持把剩余失败归因为
+general_indexer 迁移回归。未验证项仍包括图 capture/replay、性能、多进程/多卡并发，
+以及 Ascend910B 真机 general_indexer。

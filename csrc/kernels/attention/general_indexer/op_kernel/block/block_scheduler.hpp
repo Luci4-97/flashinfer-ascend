@@ -55,13 +55,16 @@ public:
         for (uint32_t b = 0; b < batch; ++b) {
             const uint32_t qLen = static_cast<uint32_t>(cuQ_[b + 1] - cuQ_[b]);
             const uint32_t kLen = static_cast<uint32_t>(cuK_[b + 1] - cuK_[b]);
-            if (qLen == 0 || kLen == 0) {
+            if (qLen == 0) {
                 continue;
             }
             const uint32_t qDim = CeilDiv(qLen, s1Tile);
+            totalQTiles += qDim;
+            if (kLen == 0) {
+                continue;
+            }
             const uint32_t kDim = CeilDiv(kLen, s2Tile);
             totalMmadTasks += static_cast<uint64_t>(qDim) * static_cast<uint64_t>(kDim);
-            totalQTiles += qDim;
         }
         nextMmad = block_idx;
         nextQTile = block_idx;
@@ -122,7 +125,7 @@ public:
             const uint32_t qLen = static_cast<uint32_t>(cuQ_[b + 1] - cuQ_[b]);
             const uint32_t reqKStart = static_cast<uint32_t>(cuK_[b]);
             const uint32_t reqKLen = static_cast<uint32_t>(cuK_[b + 1] - cuK_[b]);
-            const uint32_t qDim = (qLen > 0 && reqKLen > 0) ? CeilDiv(qLen, s1Tile) : 0U;
+            const uint32_t qDim = qLen > 0 ? CeilDiv(qLen, s1Tile) : 0U;
             if (tileId < acc + qDim) {
                 const uint32_t qBlockIdx = static_cast<uint32_t>(tileId - acc);
                 const uint32_t localQStart = qBlockIdx * s1Tile;

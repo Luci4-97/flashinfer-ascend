@@ -14,7 +14,7 @@ def _device(tensor):
     return torch_npu.npu_format_cast(tensor.npu(), 2)
 
 
-def _call(query, key, weights, topk, **options):
+def _call(query, key, weights, topk, *, backend="ascendc", out=None, **options):
     from flashinfer.aclnn import enable_aclnn
 
     enable_aclnn()
@@ -22,9 +22,12 @@ def _call(query, key, weights, topk, **options):
         name: (_device(value) if isinstance(value, torch.Tensor) else value)
         for name, value in options.items()
     }
+    if backend is not None:
+        options["backend"] = backend
+    if out is not None:
+        options["out"] = out
     return public_function("general_indexer")(
-        _device(query), _device(key), _device(weights), topk,
-        backend="ascendc", **options,
+        _device(query), _device(key), _device(weights), topk, **options,
     )
 
 
@@ -142,11 +145,100 @@ def topk_upper_bound_and_d64_n64():
     _assert_outputs(actual, expected)
 
 
+def empty_key_request_initializes_invalid_outputs():
+    torch.manual_seed(906)
+    query = torch.randn(8, 2, 16, dtype=torch.float16)
+    key = torch.randn(32, 16, dtype=torch.float16)
+    weights = torch.randn(8, 2, dtype=torch.float16)
+    cu_q = torch.tensor([0, 4, 8], dtype=torch.int32)
+    cu_k = torch.tensor([0, 0, 32], dtype=torch.int32)
+    actual = _call(
+        query, key, weights, 4, layout_q="TND", layout_k="TND",
+        cu_seqlens_q=cu_q, cu_seqlens_k=cu_k,
+        return_value=True, return_score=True,
+    )
+    expected = golden(
+        torch, query, key, weights, 4, layout_q="TND", layout_k="TND",
+        cu_q=cu_q, cu_k=cu_k, return_value=True, return_score=True,
+    )
+    _assert_outputs(actual, expected)
+
+
+def flat_seqused_q_without_cu_seqlens():
+    torch.manual_seed(907)
+    query = torch.randn(8, 2, 16, dtype=torch.float16)
+    key = torch.randn(32, 16, dtype=torch.float16)
+    weights = torch.randn(8, 2, dtype=torch.float16)
+    seqused_q = torch.tensor([5], dtype=torch.int32)
+    actual = _call(
+        query, key, weights, 4, seqused_q=seqused_q,
+        return_value=True, return_score=True,
+    )
+    expected = golden(
+        torch, query, key, weights, 4, seqused_q=seqused_q,
+        return_value=True, return_score=True,
+    )
+    _assert_outputs(actual, expected)
+
+
+def paged_4d_key_and_multi_batch_offset():
+    torch.manual_seed(908)
+    tq, n1, s2, d, topk, block, batch = 8, 2, 32, 16, 4, 16, 2
+    query = torch.randn(tq, n1, d, dtype=torch.float16)
+    weights = torch.randn(tq, n1, dtype=torch.float16)
+    max_blocks = (s2 + block - 1) // block
+    pages = torch.randn(batch * max_blocks, block, 1, d, dtype=torch.float16)
+    table = torch.arange(batch * max_blocks, dtype=torch.int32).reshape(batch, max_blocks)
+    seqused_k = torch.full((batch,), s2, dtype=torch.int32)
+    cu_q = torch.tensor([0, 4, 8], dtype=torch.int32)
+    offset = torch.arange(100, 100 + tq, dtype=torch.int32)
+    actual = _call(
+        query, pages, weights, topk, layout_q="TND", layout_k="PA_BBND",
+        cu_seqlens_q=cu_q, block_table=table, seqused_k=seqused_k,
+        max_seq_len_k=s2, output_idx_offset=offset,
+        return_value=True, return_score=True,
+    )
+    expected = golden(
+        torch, query, pages, weights, topk, layout_q="TND", layout_k="PA_BBND",
+        cu_q=cu_q, block_table=table, seqused_k=seqused_k,
+        max_seq_len_k=s2, output_idx_offset=offset,
+        return_value=True, return_score=True,
+    )
+    _assert_outputs(actual, expected)
+
+
+def default_backend_hidden_outputs_and_out_identity():
+    torch.manual_seed(909)
+    query = torch.randn(8, 2, 16, dtype=torch.float16)
+    key = torch.randn(32, 16, dtype=torch.float16)
+    weights = torch.randn(8, 2, dtype=torch.float16)
+    expected = golden(
+        torch, query, key, weights, 4,
+        return_value=False, return_score=False,
+    )
+    actual = _call(
+        query, key, weights, 4, backend=None,
+        return_value=False, return_score=False,
+    )
+    _assert_outputs(actual, expected)
+    supplied = tuple(_device(torch.empty_like(value)) for value in expected)
+    returned = _call(
+        query, key, weights, 4, backend=None, out=supplied,
+        return_value=False, return_score=False,
+    )
+    assert all(received is output for received, output in zip(returned, supplied))
+    _assert_outputs(returned, expected)
+
+
 CASES = {
     "tnd_uneven_non_aligned_mask_seqused": tnd_uneven_non_aligned_mask_seqused,
     "paged_scrambled_tail_and_illegal_page": paged_scrambled_tail_and_illegal_page,
     "large_s2_and_stable_tie_break": large_s2_and_stable_tie_break,
     "topk_upper_bound_and_d64_n64": topk_upper_bound_and_d64_n64,
+    "empty_key_request_initializes_invalid_outputs": empty_key_request_initializes_invalid_outputs,
+    "flat_seqused_q_without_cu_seqlens": flat_seqused_q_without_cu_seqlens,
+    "paged_4d_key_and_multi_batch_offset": paged_4d_key_and_multi_batch_offset,
+    "default_backend_hidden_outputs_and_out_identity": default_backend_hidden_outputs_and_out_identity,
 }
 
 

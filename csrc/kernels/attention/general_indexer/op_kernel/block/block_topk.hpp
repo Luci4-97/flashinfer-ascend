@@ -314,7 +314,7 @@ public:
     /// Emitted indices are global TND K token ids (kStart + local), plus optional per-row offset.
     CATLASS_DEVICE void operator()(uint32_t s1Start, uint32_t actualS1, uint32_t kStart, uint32_t kLen)
     {
-        if (kLen == 0 || actualS1 == 0) {
+        if (actualS1 == 0) {
             return;
         }
         const uint32_t s2Dim = CeilDiv(kLen, s2Tile_);

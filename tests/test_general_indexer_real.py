@@ -52,3 +52,19 @@ def test_large_s2_and_stable_tie_break(general_indexer_environment):
 
 def test_topk_upper_bound_and_d64_n64(general_indexer_environment):
     _run_case(general_indexer_environment, "topk_upper_bound_and_d64_n64")
+
+
+def test_empty_key_request_initializes_invalid_outputs(general_indexer_environment):
+    _run_case(general_indexer_environment, "empty_key_request_initializes_invalid_outputs")
+
+
+def test_flat_seqused_q_without_cu_seqlens(general_indexer_environment):
+    _run_case(general_indexer_environment, "flat_seqused_q_without_cu_seqlens")
+
+
+def test_paged_4d_key_and_multi_batch_offset(general_indexer_environment):
+    _run_case(general_indexer_environment, "paged_4d_key_and_multi_batch_offset")
+
+
+def test_default_backend_hidden_outputs_and_out_identity(general_indexer_environment):
+    _run_case(general_indexer_environment, "default_backend_hidden_outputs_and_out_identity")

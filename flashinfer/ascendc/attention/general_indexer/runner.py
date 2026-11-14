@@ -186,6 +186,9 @@ def admission(recipe, signature):
             batch, s2 = key[0], key[1]
             shapes[positions["key"]] = (batch * s2, key[-1])
             key = shapes[positions["key"]]
+        elif layout_k == "PA_BBND" and len(key) == 4 and key[2] == 1:
+            shapes[positions["key"]] = (key[0], key[1], key[3])
+            key = shapes[positions["key"]]
         dtypes.insert(hidden, q_dtype if is_paged else "none")
         shapes.insert(hidden, key if is_paged else ())
         physical.insert(hidden, "ND" if is_paged else "")
