@@ -37,6 +37,7 @@ public:
         maskMode_ = tiling->maskMode;
         hasSequsedQ_ = tiling->hasSequsedQ != 0;
         hasSequsedK_ = tiling->hasSequsedK != 0;
+        hasCmpResidualK_ = tiling->hasCmpResidualK != 0;
         for (uint32_t i = 0; i <= batch_; ++i) {
             cuQ_[i] = tiling->cuSeqlensQ[i];
             cuK_[i] = tiling->cuSeqlensK[i];
@@ -45,6 +46,66 @@ public:
             sequsedQ_[i] = tiling->sequsedQ[i];
             sequsedK_[i] = tiling->sequsedK[i];
             cmpResidualK_[i] = tiling->cmpResidualK[i];
+        }
+    }
+
+    CATLASS_DEVICE
+    void InitFromGm(
+        __gm__ GeneralIndexerTilingData const* tiling, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
+        GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK)
+    {
+        s1_ = tiling->s1;
+        s2_ = tiling->s2;
+        batch_ = tiling->batch == 0 ? 1U : tiling->batch;
+        if (batch_ > kMaxBatch) {
+            batch_ = 1U;
+        }
+        maskMode_ = tiling->maskMode;
+        hasSequsedQ_ = tiling->hasSequsedQ != 0;
+        hasSequsedK_ = tiling->hasSequsedK != 0;
+        hasCmpResidualK_ = tiling->hasCmpResidualK != 0;
+
+        if (tiling->hasCuSeqlens != 0) {
+            AscendC::GlobalTensor<int32_t> gmCuQ;
+            AscendC::GlobalTensor<int32_t> gmCuK;
+            gmCuQ.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(cuSeqlensQ));
+            gmCuK.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(cuSeqlensK));
+            for (uint32_t i = 0; i <= batch_; ++i) {
+                cuQ_[i] = gmCuQ.GetValue(i);
+                cuK_[i] = gmCuK.GetValue(i);
+            }
+        } else {
+            cuQ_[0] = 0;
+            cuQ_[1] = static_cast<int32_t>(s1_);
+            cuK_[0] = 0;
+            cuK_[1] = static_cast<int32_t>(s2_);
+        }
+
+        for (uint32_t i = 0; i < batch_; ++i) {
+            sequsedQ_[i] = static_cast<int32_t>(QLen(i));
+            sequsedK_[i] = static_cast<int32_t>(KLen(i));
+            cmpResidualK_[i] = 0;
+        }
+        if (hasSequsedQ_ && sequsedQ != nullptr) {
+            AscendC::GlobalTensor<int32_t> gmSeqQ;
+            gmSeqQ.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sequsedQ));
+            for (uint32_t i = 0; i < batch_; ++i) {
+                sequsedQ_[i] = gmSeqQ.GetValue(i);
+            }
+        }
+        if (hasSequsedK_ && sequsedK != nullptr) {
+            AscendC::GlobalTensor<int32_t> gmSeqK;
+            gmSeqK.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sequsedK));
+            for (uint32_t i = 0; i < batch_; ++i) {
+                sequsedK_[i] = gmSeqK.GetValue(i);
+            }
+        }
+        if (hasCmpResidualK_ && cmpResidualK != nullptr) {
+            AscendC::GlobalTensor<int32_t> gmResidual;
+            gmResidual.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(cmpResidualK));
+            for (uint32_t i = 0; i < batch_; ++i) {
+                cmpResidualK_[i] = gmResidual.GetValue(i);
+            }
         }
     }
 
@@ -65,6 +126,7 @@ private:
     int32_t maskMode_{0};
     bool hasSequsedQ_{false};
     bool hasSequsedK_{false};
+    bool hasCmpResidualK_{false};
     int32_t cuQ_[kMaxBatch + 1]{0};
     int32_t cuK_[kMaxBatch + 1]{0};
     int32_t sequsedQ_[kMaxBatch]{0};

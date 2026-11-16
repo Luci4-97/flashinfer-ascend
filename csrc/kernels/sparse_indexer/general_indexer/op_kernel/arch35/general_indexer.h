@@ -63,7 +63,8 @@ template <typename InputType, typename WeightType, class KeyLoader>
 CATLASS_DEVICE void RunKernel(
     GM_ADDR query, GM_ADDR key, GM_ADDR weights, GM_ADDR indices, GM_ADDR values,
     GM_ADDR scores, GM_ADDR block_table, GM_ADDR zero_page, GM_ADDR output_idx_offset,
-    GM_ADDR tiling)
+    GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_k, GM_ADDR seqused_q, GM_ADDR seqused_k,
+    GM_ADDR cmp_residual_k, GM_ADDR tiling)
 {
     __gm__ GeneralIndexerTilingData const* tilingData = reinterpret_cast<__gm__ GeneralIndexerTilingData*>(tiling);
     AscendC::GlobalTensor<InputType> gmQ;
@@ -92,8 +93,8 @@ CATLASS_DEVICE void RunKernel(
     }
 
     Kernel<InputType, WeightType, KeyLoader> kernel;
-    kernel(gmQ, gmK, gmW, gmOut, gmValues, gmScores, tilingData,
-           gmBlockTable, gmZeroPage, gmOutputIdxOffset);
+    kernel(gmQ, gmK, gmW, gmOut, gmValues, gmScores, tilingData, cu_seqlens_q, cu_seqlens_k,
+           seqused_q, seqused_k, cmp_residual_k, gmBlockTable, gmZeroPage, gmOutputIdxOffset);
 }
 
 } // namespace GeneralIndexerKernelDetail

@@ -49,12 +49,13 @@ class GeneralIndexerKernel {
     using KeyLoaderParams = typename KeyLoader::Params;
 
     CATLASS_DEVICE static typename BlockScheduler::Params MakeSchedulerParams(
-        __gm__ GeneralIndexerTilingData const* tiling)
+        __gm__ GeneralIndexerTilingData const* tiling, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
+        GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK)
     {
         typename BlockScheduler::Params params{};
         params.policy.s1Tile = tiling->s1Tile;
         params.policy.s2Tile = tiling->s2Tile;
-        params.source.InitFromTiling(tiling);
+        params.source.InitFromGm(tiling, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK);
         return params;
     }
 
@@ -104,12 +105,14 @@ public:
         AscendC::GlobalTensor<DtypeQ> const& gmQ, AscendC::GlobalTensor<DtypeK> const& gmK,
         AscendC::GlobalTensor<DtypeW> const& gmW, AscendC::GlobalTensor<DtypeOut> const& outIndices,
         AscendC::GlobalTensor<DtypeS> const& outValues, AscendC::GlobalTensor<DtypeS>& scores,
-        __gm__ GeneralIndexerTilingData const* tiling,
+        __gm__ GeneralIndexerTilingData const* tiling, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
+        GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK,
         AscendC::GlobalTensor<int32_t> const& gmBlockTable,
         AscendC::GlobalTensor<DtypeK> const& gmZeroPage,
         AscendC::GlobalTensor<int32_t> const& gmOutputIdxOffset)
     {
-        typename BlockScheduler::Params schedulerParams = MakeSchedulerParams(tiling);
+        typename BlockScheduler::Params schedulerParams =
+            MakeSchedulerParams(tiling, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK);
         BlockScheduler blockScheduler(schedulerParams);
 
         if ASCEND_IS_AIC {

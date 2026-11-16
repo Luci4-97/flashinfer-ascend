@@ -28,15 +28,12 @@ extern "C" __global__ __aicore__ void fi_general_indexer(
     if (TILING_KEY_IS(0)) {
         GeneralIndexerKernelDetail::RunKernel<InputType, WeightType, Contiguous>(
             query, key, weights, indices, values, scores, block_table, zero_page,
-            output_idx_offset, tiling);
+            output_idx_offset, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+            cmp_residual_k, tiling);
     } else if (TILING_KEY_IS(1)) {
         GeneralIndexerKernelDetail::RunKernel<InputType, WeightType, Paged>(
             query, key, weights, indices, values, scores, block_table, zero_page,
-            output_idx_offset, tiling);
+            output_idx_offset, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+            cmp_residual_k, tiling);
     }
-    (void)cu_seqlens_q;
-    (void)cu_seqlens_k;
-    (void)seqused_q;
-    (void)seqused_k;
-    (void)cmp_residual_k;
 }

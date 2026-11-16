@@ -37,6 +37,7 @@ struct GeneralIndexerTilingData {
     uint32_t hasCuSeqlens{0};
     uint32_t hasSequsedQ{0};
     uint32_t hasSequsedK{0};
+    uint32_t hasCmpResidualK{0};
     int32_t maskMode{0};
     int32_t cmpRatio{1};
     int32_t cuSeqlensQ[kMaxBatch + 1]{0};

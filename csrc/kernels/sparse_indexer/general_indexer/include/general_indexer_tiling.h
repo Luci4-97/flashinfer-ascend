@@ -139,6 +139,7 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
     }
     tilingData.hasSequsedQ = 0;
     tilingData.hasSequsedK = 0;
+    tilingData.hasCmpResidualK = params.cmpResidualK != nullptr ? 1U : 0U;
     for (uint32_t b = 0; b < batch; ++b) {
         const uint32_t qLen = static_cast<uint32_t>(tilingData.cuSeqlensQ[b + 1] - tilingData.cuSeqlensQ[b]);
         const uint32_t kLen = static_cast<uint32_t>(tilingData.cuSeqlensK[b + 1] - tilingData.cuSeqlensK[b]);
