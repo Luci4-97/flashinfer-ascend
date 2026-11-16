@@ -53,6 +53,11 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
     if (params.s1 == 0 || params.n1 == 0 || params.s2 == 0 || params.d == 0) {
         throw std::invalid_argument("GeneralIndexerTiling: s1, n1, s2 and d must be positive");
     }
+    constexpr uint32_t kHeadDimCap = 128;
+    constexpr uint32_t kHeadDimAlign = 16;
+    if (params.d > kHeadDimCap || params.d % kHeadDimAlign != 0) {
+        throw std::invalid_argument("GeneralIndexerTiling: d must be in [16, 128] and multiple of 16");
+    }
     if (params.k == 0 || params.k > params.s2) {
         throw std::invalid_argument("GeneralIndexerTiling: k must be in [1, s2]");
     }
@@ -119,7 +124,9 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
 
     constexpr uint32_t kS2TileCap = 256;
     constexpr uint32_t kUbSize = 248 * 1024;
+    constexpr uint32_t kL1Size = 512 * 1024;
     constexpr uint32_t kL0cSize = 256 * 1024;
+    constexpr uint32_t kQkElemBytes = 2;
     constexpr uint32_t aivPerAic = 2;
     constexpr uint32_t cubeFractalN = 16;
     constexpr uint32_t cubeFractalM = 16;
@@ -150,9 +157,25 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
         SparseIndexer::Common::AlignUp(kS1Align * params.n1, cubeFractalM) <= l0cRows) {
         s1Tile = kS1Align;
     }
+
+    // BlockMmad stages A in L1A and B in L1B. UB/L0C do not account for L1A,
+    // which grows with D and is the limiting resource for D=128.
+    const uint32_t l1BBytes =
+        SparseIndexer::Common::AlignUp(s2Tile, cubeFractalN) * params.d * kQkElemBytes;
+    const uint64_t l1Budget = l1BBytes < kL1Size ? static_cast<uint64_t>(kL1Size - l1BBytes) : 0;
+    while (s1Tile > 0) {
+        const uint32_t alignedM = SparseIndexer::Common::AlignUp(s1Tile * params.n1, cubeFractalM);
+        if (static_cast<uint64_t>(alignedM) * params.d * kQkElemBytes <= l1Budget) {
+            break;
+        }
+        --s1Tile;
+    }
+    if (s1Tile >= kS1Align) {
+        s1Tile = s1Tile / kS1Align * kS1Align;
+    }
     tilingData.s1Tile = s1Tile;
     if (tilingData.s1Tile == 0) {
-        throw std::invalid_argument("GeneralIndexerTiling: s1Tile is zero under UB/L0C limits");
+        throw std::invalid_argument("GeneralIndexerTiling: s1Tile is zero under UB/L0C/L1 limits");
     }
 
 }

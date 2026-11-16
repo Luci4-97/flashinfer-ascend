@@ -16,7 +16,7 @@
 
 公共入口为 `flashinfer.general_indexer`，固定返回 `(indices, values, scores)`；未请求的可选输出返回形状 `(0,)` 的 FP32 Tensor。计算为按 head 加权 `ReLU(Q @ K^T)` 后执行稳定 TopK，支持 SND/TND/BSND 与 PA_BBND 布局。
 
-支持 Q/K 的 FP16/BF16 同 dtype 组合，W 支持 FP16/BF16/FP32；Ascend950 上 D=16..64、N1=1..64、B≤16、k≤8192、Tq/Tk≤16384，并要求连续 ND 输入。PA_BBND 必须提供 `block_table`、`seqused_k` 和 `max_seq_len_k`。
+支持 Q/K 的 FP16/BF16 同 dtype 组合，W 支持 FP16/BF16/FP32；Ascend950 上 D=16..128、N1=1..64、B≤16、k≤8192、Tq/Tk≤16384，并要求连续 ND 输入。PA_BBND 必须提供 `block_table`、`seqused_k` 和 `max_seq_len_k`。
 
 该实现为 eager AOT-only，图能力保持 `NOT_CAPTURABLE`；未做性能声明。源码：[公共定义](../../flashinfer/operators/sparse_indexer/general_indexer/operator.py)、[AOT/runner](../../flashinfer/ascendc/sparse_indexer/general_indexer/)、[设备实现](../../csrc/kernels/sparse_indexer/general_indexer/)、[common blocks](../../csrc/kernels/sparse_indexer/common/op_kernel/block/)。
 

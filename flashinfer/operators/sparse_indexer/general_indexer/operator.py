@@ -17,7 +17,7 @@ from flashinfer.runtime import InferenceSpec
 OP = "sparse_indexer.general_indexer"
 MAX_TOPK = 8192
 MAX_TOTAL = 16384
-MAX_HEAD_DIM = 64
+MAX_HEAD_DIM = 128
 MAX_HEADS = 64
 MAX_BATCH = 16
 SCORE_WORKSPACE_LIMIT = 1 << 30
@@ -36,7 +36,7 @@ def _layout(value, name, allowed):
 
 def _head_dim(value):
     if not 16 <= value <= MAX_HEAD_DIM or value % 16:
-        raise ValueError("head dim must be in [16, 64] and multiple of 16")
+        raise ValueError("head dim must be in [16, 128] and multiple of 16")
 
 
 def _positive(name, value):

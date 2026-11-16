@@ -14,7 +14,7 @@
 - SoC：Ascend950。
 - Q/K：FP16、BF16；W：FP16、BF16、FP32。
 - 布局：SND/TND/BSND/PA_BBND；PA 必须显式提供 `max_seq_len_k`。
-- D=16..64、N1=1..64、B≤16、k≤8192、Tq/Tk≤16384。
+- D=16..128、N1=1..64、B≤16、k≤8192、Tq/Tk≤16384。
 - 完整 `Tq×Tk` FP32 score scratch 上限 1 GiB。
 
 关键实现位置：
@@ -104,7 +104,7 @@ PYTEST_EXIT=0
 - TND 非均匀、非 8 对齐、mask3、seqused。
 - PA 乱序页表、非法页、尾页。
 - S2=8448、稳定 tie-break。
-- TopK=8192、D=64/N1=64。
+- TopK=8192、D=128/N1=64。
 - AOT 命中、queue 0/1/2、out 身份、非默认 stream、缺包/损坏产物明确失败。
 
 full 回归首次运行暴露了测试隔离问题：父进程此前已有 NPU 调用时，CANN 已冻结 custom OPP 搜索路径，之后再设置 `ASCEND_CUSTOM_OPP_PATH` 太晚。四组真机 case 因此改为由 `tests/test_general_indexer_real.py:28` 启动全新解释器，实际 case 位于 `tests/general_indexer_acceptance.py:40`、`:65`、`:94`、`:116`。随后用“先跑其他 NPU 用例，再跑 general_indexer”的同进程顺序复验：
@@ -230,7 +230,7 @@ spec=e856e24e7794bb4654e44b3c53037111c3d6ae1522c5af6e3e8d876926fc0aaa
 - 图 capture/replay：未验证，能力声明保持 `NOT_CAPTURABLE`。
 - 性能：未做同口径测量，不声明性能优势。
 - 多进程/多卡并发：未验证。
-- D=128、N1>64：未支持；不得由当前保守 envelope 外推。
+- N1>64：未支持；D=128 已在后续 13.6 节放开并完成真机验证，但仍不得外推其他 envelope。
 - 修复测试隔离后的全量 `full`：尚未重跑；当前只有定向真机与 quick 通过。
 
 ## 9. eager 边界补强与 full 复核（2026-11-15）
@@ -632,3 +632,38 @@ spec=f62506bd1ef087cc54a25574a6fdb22c9788764cd7b11a10a2800b2852915c26
   不是所有 host 后处理 D2H。
 - 未验证同 SoC indexer→sparse attention 真机端到端、图 capture/replay、性能和多卡并发。
 - `lightning_indexer` 仍未创建、注册或构建。
+### 13.6 D=128 扩展（2026-11-16）
+
+D=128 已放开并通过 A950 真机验证。首轮失败定位到 host tiling 未将 BlockMmad 的
+`L1A = align(s1Tile * N1, 16) * D * sizeof(Q/K)` 纳入资源预算；BlockMmad 本身不需要
+D=128 专用分支。tiling 增加 L1A + L1B 的 512 KiB 预算约束后，D=128 路径通过。
+
+验证：
+
+```text
+public D=128 contract: 2 passed
+AOT cold build: built=1, failed=0, skipped=0
+general_indexer real: 9 passed
+operator package -k general_indexer: 6 passed
+quick: 2386 passed, 171 deselected, 0 skipped, 0 failed
+```
+
+最终 D=128 spec：
+
+```text
+60d9c53dcc569039b5005d54e327a2da566649d72ced0cf6af1bdbb3e2ef2368
+```
+
+D=128 支持仍受 GeneralIndexer 其他 envelope 限制（B≤16、Tq/Tk≤16384、N1≤64）；
+不应外推为 LI V2 全面 parity。
+
+最终 D=128 wheel 与干净 venv 验证：
+
+```text
+/tmp/fi-d128-wheel.gcmMHS/dist/flashinfer_ascend950-0.1.0.dev0-py3-none-linux_x86_64.whl
+sha256=732956af4f50cb1cd09e684dca2849dd4e1efdf83c32cf3cefbf55105a9ad3f4
+venv=/tmp/fi-d128-venv.Jd4ylK
+Summary: 4 PASS, 0 FAIL, 0 SKIP (total=4)
+PASS sparse_indexer.general_indexer: bundled AOT hit; compilation=disabled
+spec=60d9c53dcc569039b5005d54e327a2da566649d72ced0cf6af1bdbb3e2ef2368
+```
