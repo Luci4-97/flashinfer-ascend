@@ -667,3 +667,14 @@ Summary: 4 PASS, 0 FAIL, 0 SKIP (total=4)
 PASS sparse_indexer.general_indexer: bundled AOT hit; compilation=disabled
 spec=60d9c53dcc569039b5005d54e327a2da566649d72ced0cf6af1bdbb3e2ef2368
 ```
+
+最终 D=128 wheel 与干净 venv 验证：
+
+```text
+/tmp/fi-d128-wheel.gcmMHS/dist/flashinfer_ascend950-0.1.0.dev0-py3-none-linux_x86_64.whl
+sha256=732956af4f50cb1cd09e684dca2849dd4e1efdf83c32cf3cefbf55105a9ad3f4
+venv=/tmp/fi-d128-venv.Jd4ylK
+Summary: 4 PASS, 0 FAIL, 0 SKIP (total=4)
+PASS sparse_indexer.general_indexer: bundled AOT hit; compilation=disabled
+spec=60d9c53dcc569039b5005d54e327a2da566649d72ced0cf6af1bdbb3e2ef2368
+```
