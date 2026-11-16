@@ -2,10 +2,10 @@
 
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -169,9 +169,10 @@ def build_probe(implementation, soc, output, cache):
 @pytest.mark.real_compile
 def test_current_csrc_native_probe_builds_and_executes_on_available_device(tmp_path):
     import torch
-    import torch_npu
-    from flashinfer.runtime import current_hardware
+    import torch_npu  # noqa: F401
+
     from flashinfer.aclnn.build import build_adapter
+    from flashinfer.runtime import current_hardware
 
     assert torch.npu.is_available(), "missing NPU is a failure"
     torch.npu.set_device(int(os.environ.get("FLASHINFER_TEST_NPU_DEVICE", "0")))
@@ -247,6 +248,7 @@ def test_current_csrc_native_probe_builds_and_executes_on_available_device(tmp_p
 @pytest.mark.parametrize(
     "kernel_id",
     [
+        "ascendc/attention/general_indexer/catlass/op_package/Ascend950",
         "ascendc/gemm/matmul/native/op_package/Ascend950",
         "ascendc/t2/matmul_bias_silu/native/op_package/Ascend950",
         "ascendc/t4/flash_attention/catlass/op_package/Ascend950",

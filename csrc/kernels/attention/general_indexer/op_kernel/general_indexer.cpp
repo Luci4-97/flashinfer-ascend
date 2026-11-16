@@ -11,7 +11,7 @@
 #error "general_indexer requires arch35 (__CCE_AICORE__ == 310)"
 #endif
 
-extern "C" __global__ __aicore__ void FI_DEVICE_ENTRY(
+extern "C" __global__ __aicore__ void fi_general_indexer(
     GM_ADDR query, GM_ADDR key, GM_ADDR weights, GM_ADDR block_table,
     GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_k, GM_ADDR seqused_q,
     GM_ADDR seqused_k, GM_ADDR cmp_residual_k, GM_ADDR output_idx_offset,

@@ -9,6 +9,7 @@ distributions.
 | Local source | Upstream source | Imported revision |
 | --- | --- | --- |
 | `csrc/kernels/attention/flash_attention/` | CATLASS, `examples/40_flash_attention_infer_tla/` and `examples/49_ascend950_flash_attention_infer/` | v2.2.0, `6c0a3242b2effd861ac91aab1999f2226b643614` |
+| `csrc/kernels/attention/general_indexer/` | CATLASS, `examples/99_ascend950_general_indexer/` | `8e6ca8658e6683defd175aaed09a0f9b4c449ad4` (ported source; builds with the v2.2.0 header tree) |
 | `tests/fixtures/catlass-golden/gen_data.py` | CATLASS, `examples/49_ascend950_flash_attention_infer/gen_data.py` | `41bf90da655bba3c66d0acd7e00abe33960ecfd6` (frozen numerical reference) |
 | `csrc/kernels/gemm/grouped_matmul_swiglu_quant/` | vllm-ascend, `csrc/gmm/grouped_matmul_swiglu_quant/` | `535ae0bb911cb378819f52fcf2e7c8b67fde3f51` |
 | `csrc/kernels/attention/sparse_flash_attention/` | vllm-ascend, `csrc/attention/sparse_flash_attention/` (arch22) | `535ae0bb911cb378819f52fcf2e7c8b67fde3f51` |

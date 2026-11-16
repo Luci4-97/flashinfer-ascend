@@ -1,19 +1,21 @@
 """Production inventory selection and frozen AOT identities without a compiler."""
 
-from tests.production_inventory import PRODUCTION
-
-from dataclasses import replace
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from flashinfer.aot import build
-from flashinfer.ascendc import FLASH_ATTENTION_KERNEL_ID, MATMUL_BIAS_SILU_KERNEL_ID, _contracts
+from flashinfer.ascendc import (
+    FLASH_ATTENTION_KERNEL_ID,
+    MATMUL_BIAS_SILU_KERNEL_ID,
+    _contracts,
+)
 from flashinfer.jit import AscendCBuildConfig
 from flashinfer.runtime import SchemaError
-
+from tests.production_inventory import PRODUCTION
 
 ROOT = Path(__file__).resolve().parents[2]
 

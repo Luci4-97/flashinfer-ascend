@@ -305,8 +305,8 @@ def test_production_inventory_declares_general_indexer_exactly():
     assert any(row[0] == kernel_id and row[1:] == (
         "attention.general_indexer", "general_indexer", "catlass", "Ascend950"
     ) for row in PRODUCTION)
-    assert len(PRODUCTION) == STACK_COUNTS["ascendc"] == 6
-    assert DEFAULT_DESCRIPTOR_COUNT == 87
+    assert len(PRODUCTION) == STACK_COUNTS["ascendc"] == 10
+    assert DEFAULT_DESCRIPTOR_COUNT == 91
 
 
 def test_real_release_environment_is_process_local(monkeypatch, tmp_path):

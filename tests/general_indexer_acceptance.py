@@ -15,9 +15,6 @@ def _device(tensor):
 
 
 def _call(query, key, weights, topk, *, backend="ascendc", out=None, **options):
-    from flashinfer.aclnn import enable_aclnn
-
-    enable_aclnn()
     options = {
         name: (_device(value) if isinstance(value, torch.Tensor) else value)
         for name, value in options.items()

@@ -20,7 +20,7 @@
 
 | 算子族 | 本仓情况 |
 | --- | --- |
-| Attention / KV / 状态合并 | single/batch、paged/ragged、KV append 与 merge 有受限实现；mixed BatchAttention 默认 NPU provider 不可用 |
+| Attention / KV / 状态合并 | single/batch、paged/ragged、KV append 与 merge 有受限实现；另有受限 CATLASS GeneralIndexer；mixed BatchAttention 默认 NPU provider 不可用 |
 | GEMM / MoE | BF16/FP8、分段 GEMM 和部分专家计算；本仓另有 Matmul、MatmulBiasSiLU、GMM/SwiGLU/量化直接入口 |
 | Norm / Activation / RoPE / Sampling | 继承部分函数契约，提供对应后端；PDL 在 NPU 上关闭 |
 | MLA / Sparse / 量化转换 / 通信 | 本仓新增 SFA 只覆盖受限 MLA；不提供上游这些完整模块与 CUDA 后端 |
@@ -30,11 +30,11 @@
 | backend | 登记数 | 执行与范围 |
 | --- | ---: | --- |
 | `cann` | 41 | 已安装的 Torch/TorchNPU/CANN API；逐算子核对 SoC/dtype |
-| `ascendc` | 9 | Ascend910B/Ascend910C/Ascend950 各三项，v2 ACLNN op-package |
+| `ascendc` | 10 | Ascend910B/Ascend910C 各三项，Ascend950 四项，v2 ACLNN op-package |
 | `triton` | 2 | Matmul、Gemma fused Add RMSNorm，JIT |
 | `reference` | 38 | 显式参考计算，不是运行失败自动兜底 |
 
-源码目录共 48 个逻辑 op、90 条全局记录，另有独立实验实现；二进制 wheel 的原生目录只登记随包交付的目标。支持标签依据登记与测试定义，不是当前机器验收成绩；图能力和完整 dtype 组合见 [逐算子支持矩阵](docs/backends/overview.md)。
+源码目录共 49 个逻辑 op、91 条全局记录，另有独立实验实现；二进制 wheel 的原生目录只登记随包交付的目标。支持标签依据登记与测试定义，不是当前机器验收成绩；图能力和完整 dtype 组合见 [逐算子支持矩阵](docs/backends/overview.md)。
 
 ## Getting Started
 

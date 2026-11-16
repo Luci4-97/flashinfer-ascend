@@ -1,16 +1,28 @@
 """Migration evidence and backend-independent registration/execution contracts."""
 
-from dataclasses import replace
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from flashinfer.operators.authoring import discover, discover_implementations, generate
-from flashinfer.operators.implementation import ImplementationDefinition, implementation_entries
+from flashinfer.operators.implementation import (
+    ImplementationDefinition,
+    implementation_entries,
+)
 from flashinfer.runtime import (
-    Backend, CapabilityCase, CapabilitySpec, FeatureConstraint, HardwareSignature, InputSignature, KernelDescriptor,
-    KernelRegistry, SchemaError, dispatch, get_global_registry,
+    Backend,
+    CapabilityCase,
+    CapabilitySpec,
+    FeatureConstraint,
+    HardwareSignature,
+    InputSignature,
+    KernelDescriptor,
+    KernelRegistry,
+    SchemaError,
+    dispatch,
+    get_global_registry,
 )
 from flashinfer.runtime.registry import kernel_registry_scope
 from flashinfer.runtime.runner import run_selected
@@ -136,6 +148,7 @@ def test_implementation_factory_cannot_change_identity_or_omit_runner():
 
 def test_common_matmul_metadata_never_reads_an_ascendc_contract(monkeypatch):
     from types import SimpleNamespace
+
     from flashinfer._matmul import metadata_reason
     monkeypatch.setattr('flashinfer.ascendc.load_contract', lambda _: pytest.fail('backend coupling'))
     tensor = lambda shape: SimpleNamespace(shape=shape, dtype='bfloat16', device='meta')
@@ -145,8 +158,9 @@ def test_common_matmul_metadata_never_reads_an_ascendc_contract(monkeypatch):
 
 def test_logical_call_can_use_another_backend_without_loading_a_native_recipe(monkeypatch):
     import torch
-    from flashinfer.operators.catalog import definition
+
     from flashinfer.operators import runtime
+    from flashinfer.operators.catalog import definition
 
     operator = definition('gemm.grouped_matmul_swiglu_quant')
     observed = []
@@ -180,8 +194,9 @@ def test_logical_call_can_use_another_backend_without_loading_a_native_recipe(mo
 
 def test_functional_out_alias_is_rejected_without_loading_a_backend(monkeypatch):
     import torch
-    from flashinfer.operators.catalog import definition
+
     from flashinfer.operators import runtime
+    from flashinfer.operators.catalog import definition
     operator = definition('gemm.grouped_matmul_swiglu_quant')
     monkeypatch.setattr('flashinfer.ascendc.load_contract', lambda _: pytest.fail('native recipe leak'))
     x = torch.ones((2, 16), dtype=torch.int8)
@@ -198,6 +213,7 @@ def test_functional_out_alias_is_rejected_without_loading_a_backend(monkeypatch)
 def test_every_public_entry_resolves_and_preserves_its_frontend_signature():
     import importlib
     import inspect
+
     from flashinfer.operators.catalog import definition, entries
     for record in entries():
         operator = definition(record["op"])

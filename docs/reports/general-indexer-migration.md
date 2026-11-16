@@ -1,9 +1,9 @@
 # general_indexer 迁移与发布验收记录
 
-> 日期：2026-11-14
+> 日期：2026-11-14；upstream 同步复核：2026-11-16
 > 分支：`wip/general-indexer-integration`
 > 上游：CATLASS `wip/general_indexer`，`examples/99_ascend950_general_indexer/`，提交 `8e6ca8658e6683defd175aaed09a0f9b4c449ad4`
-> 本地 CATLASS：`41bf90da655bba3c66d0acd7e00abe33960ecfd6`
+> 本地 CATLASS：`6c0a3242b2effd861ac91aab1999f2226b643614`（迁移源码来自上游 `8e6ca865...`）
 
 ## 1. 交付范围
 
@@ -300,3 +300,51 @@ full 内全部 46 个 general_indexer 用例通过，无 general_indexer 失败�
 因此 P5 的 full 门槛仍未关闭，但当前证据不支持把剩余失败归因为
 general_indexer 迁移回归。未验证项仍包括图 capture/replay、性能、多进程/多卡并发，
 以及 Ascend910B 真机 general_indexer。
+
+## 10. upstream 同步后的 rebase 复核（2026-11-16）
+
+同步目标：
+
+```text
+main / upstream/main: 7bfb179 Sync upstream/infer at 4ff3c4b
+CATLASS submodule: 6c0a3242b2effd861ac91aab1999f2226b643614
+```
+
+本地 general_indexer 分支已 rebase 到该基线，并解决：
+
+- production inventory 从 upstream 的 `9/90` 与分支的 `6/87` 合并为 `10/91`。
+- logical op / descriptor 精确计数更新为 `49/91`。
+- 删除 upstream 已移除的旧文档和 generated coverage 冲突文件。
+- Ascend C 入口改为直接的 `fi_general_indexer`。
+- 移除测试对已删除 `enable_aclnn()` 的调用。
+- 更新支持矩阵、wheel 范围、第三方来源声明和精确 release 断言。
+
+生成与冻结：
+
+```text
+python -m flashinfer.operators generate: PASS
+python -m flashinfer.operators check: PASS
+python -m flashinfer.aot --freeze --all: PASS
+general_indexer spec:
+9e8a18650e06b1b24f3327b8ce7888cd4c34c3c8f830bcd14ea74e3a259f469c
+```
+
+AOT 冷构建：
+
+```text
+requested=1, built=1, failed=0, skipped=0
+```
+
+定向验证：
+
+```text
+tests/test_general_indexer.py + tests/test_operator_layout.py + tests/test_release_checks.py:
+43 passed
+
+general_indexer real + operator package:
+13 passed，随后单个 topk_upper_bound_and_d64_n64 在独立复跑中 1 passed
+```
+
+合并矩阵第一次运行中 `topk_upper_bound_and_d64_n64` 子进程达到 300 秒超时；当时机器上有其他用户的大量 bisheng/CANN 编译任务。该 case 独立复跑通过，未观察到数值断言失败。
+
+尚未在 rebase 后的新打包结构上重建 wheel，也尚未重跑仓库级 full。当前结论不包含性能、图 capture/replay 或多卡并发。
