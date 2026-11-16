@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_MMAD_HPP
-#define FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_MMAD_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_MMAD_HPP
+#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_MMAD_HPP
 
 #include <type_traits>
 
@@ -27,7 +27,7 @@
 #include "tla/tensor.hpp"
 
 #include "key_loader.hpp"
-#include "sparse_indexer_align.hpp"
+#include "sparse_indexer_common.hpp"
 
 namespace SparseIndexer::Common::Block {
 
@@ -191,4 +191,4 @@ private:
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_MMAD_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_MMAD_HPP

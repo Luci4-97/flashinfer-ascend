@@ -3,15 +3,15 @@
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  */
 
-#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
-#define FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_KEY_LOADER_HPP
+#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_KEY_LOADER_HPP
 
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/gemm/tile/tile_copy.hpp"
 #include "catlass/matrix_coord.hpp"
 #include "kernel_operator.h"
 
-#include "sparse_indexer_align.hpp"
+#include "sparse_indexer_common.hpp"
 
 namespace SparseIndexer::Common::Block {
 
@@ -179,4 +179,4 @@ private:
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_KEY_LOADER_HPP

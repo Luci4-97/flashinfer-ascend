@@ -3,8 +3,8 @@
  * Licensed under CANN Open Software License Agreement Version 2.0.
  */
 
-#ifndef FLASHINFER_SPARSE_INDEXER_ALIGN_HPP
-#define FLASHINFER_SPARSE_INDEXER_ALIGN_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_HPP
+#define FLASHINFER_SPARSE_INDEXER_COMMON_HPP
 
 #include <cstdint>
 
@@ -22,4 +22,4 @@ CATLASS_HOST_DEVICE constexpr uint32_t AlignUp(const T& value, const U& alignmen
 
 } // namespace SparseIndexer::Common
 
-#endif // FLASHINFER_SPARSE_INDEXER_ALIGN_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_COMMON_HPP

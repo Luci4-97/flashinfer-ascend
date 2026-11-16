@@ -20,7 +20,7 @@
 #include <acl/acl.h>
 
 #include "general_indexer_tiling_data.h"
-#include "sparse_indexer_align.hpp"
+#include "sparse_indexer_common.hpp"
 
 namespace GeneralIndexerTiling {
 

@@ -14,8 +14,7 @@
 
 #include <cstdint>
 
-#include "catlass/detail/macros.hpp"
-#include "sparse_indexer_align.hpp"
+#include "sparse_indexer_common.hpp"
 
 /**
  * @brief Device-visible tiling for the general indexer.

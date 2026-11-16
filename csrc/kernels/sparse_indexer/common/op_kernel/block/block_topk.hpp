@@ -3,8 +3,8 @@
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  */
 
-#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
-#define FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_TOPK_HPP
+#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_TOPK_HPP
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
@@ -12,7 +12,7 @@
 #include "kernel_operator.h"
 
 #include "mask_utils.hpp"
-#include "sparse_indexer_align.hpp"
+#include "sparse_indexer_common.hpp"
 
 namespace SparseIndexer::Common::Block {
 
@@ -419,4 +419,4 @@ private:
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_TOPK_HPP

@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
-#define FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_MASK_UTILS_HPP
+#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_MASK_UTILS_HPP
 
 #include <cstdint>
 #include "kernel_operator.h"
@@ -52,4 +52,4 @@ CATLASS_DEVICE uint32_t Mask3VisibleLen(
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_MASK_UTILS_HPP
