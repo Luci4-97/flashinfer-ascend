@@ -19,6 +19,10 @@ extern "C" __global__ __aicore__ void fi_general_indexer(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(GeneralIndexerTilingData);
     AscendC::SetSysWorkspace(workspace);
+    __gm__ GeneralIndexerTilingData const* tilingData =
+        reinterpret_cast<__gm__ GeneralIndexerTilingData*>(tiling);
+    const bool needMask = tilingData->maskMode == 3 || tilingData->hasSequsedQ != 0 ||
+                          tilingData->hasSequsedK != 0;
 
     using InputType = DTYPE_QUERY;
     using WeightType = DTYPE_WEIGHTS;
@@ -26,14 +30,14 @@ extern "C" __global__ __aicore__ void fi_general_indexer(
     using Paged = GeneralIndexerKernelDetail::PagedKeyLoader<InputType>;
 
     if (TILING_KEY_IS(0)) {
-        GeneralIndexerKernelDetail::RunKernel<InputType, WeightType, Contiguous>(
+        GeneralIndexerKernelDetail::RunKernelWithMaskPolicy<InputType, WeightType, Contiguous>(
             query, key, weights, indices, values, scores, block_table, zero_page,
             output_idx_offset, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-            cmp_residual_k, tiling);
+            cmp_residual_k, needMask, tiling);
     } else if (TILING_KEY_IS(1)) {
-        GeneralIndexerKernelDetail::RunKernel<InputType, WeightType, Paged>(
+        GeneralIndexerKernelDetail::RunKernelWithMaskPolicy<InputType, WeightType, Paged>(
             query, key, weights, indices, values, scores, block_table, zero_page,
             output_idx_offset, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-            cmp_residual_k, tiling);
+            cmp_residual_k, needMask, tiling);
     }
 }

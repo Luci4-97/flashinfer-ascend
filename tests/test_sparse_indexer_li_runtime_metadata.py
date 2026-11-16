@@ -151,3 +151,17 @@ def test_strict_metadata_validation_still_rejects_bad_values():
     arguments["validate_metadata"] = True
     with __import__("pytest").raises(ValueError, match="start at 0"):
         OPERATOR.validate_values(arguments)
+
+
+def test_mask_behavior_is_a_compile_time_policy_axis():
+    policy = (BLOCK / "mask_policy.hpp").read_text()
+    assert "class NoMaskPolicy" in policy
+    assert "class LiV2MaskPolicy" in policy
+    reduce_head = (BLOCK / "block_reduce_head.hpp").read_text()
+    assert "class MaskPolicy_" in reduce_head
+    assert "MaskPolicy maskPolicy_" in reduce_head
+    adapter = (GI / "op_kernel/arch35/general_indexer.h").read_text()
+    assert "NoMaskPolicy" in adapter
+    assert "LiV2MaskPolicy" in adapter
+    entry = (GI / "op_kernel/general_indexer.cpp").read_text()
+    assert "RunKernelWithMaskPolicy" in entry

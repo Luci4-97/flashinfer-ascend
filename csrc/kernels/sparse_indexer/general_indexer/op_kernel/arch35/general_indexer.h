@@ -47,19 +47,19 @@ using PagedKeyLoader = SparseIndexer::Common::Block::PagedKeyLoader<
 template <class InputType, class KeyLoader>
 using BlockMmad = SparseIndexer::Common::Block::BlockMmad<InputType, InputType, KeyLoader>;
 
-template <class WeightType>
-using BlockReduceHead = SparseIndexer::Common::Block::BlockReduceHead<float, WeightType, float>;
+template <class WeightType, class MaskPolicy>
+using BlockReduceHead = SparseIndexer::Common::Block::BlockReduceHead<float, WeightType, float, MaskPolicy>;
 
 using BlockTopK = SparseIndexer::Common::Block::BlockTopK<float, int32_t>;
 
-template <class InputType, class WeightType, class KeyLoader>
+template <class InputType, class WeightType, class KeyLoader, class MaskPolicy>
 using Kernel = GeneralIndexerKernel<
     BlockScheduler,
     BlockMmad<InputType, KeyLoader>,
-    BlockReduceHead<WeightType>,
+    BlockReduceHead<WeightType, MaskPolicy>,
     BlockTopK>;
 
-template <typename InputType, typename WeightType, class KeyLoader>
+template <typename InputType, typename WeightType, class KeyLoader, class MaskPolicy>
 CATLASS_DEVICE void RunKernel(
     GM_ADDR query, GM_ADDR key, GM_ADDR weights, GM_ADDR indices, GM_ADDR values,
     GM_ADDR scores, GM_ADDR block_table, GM_ADDR zero_page, GM_ADDR output_idx_offset,
@@ -92,9 +92,27 @@ CATLASS_DEVICE void RunKernel(
         gmOutputIdxOffset.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(output_idx_offset));
     }
 
-    Kernel<InputType, WeightType, KeyLoader> kernel;
+    Kernel<InputType, WeightType, KeyLoader, MaskPolicy> kernel;
     kernel(gmQ, gmK, gmW, gmOut, gmValues, gmScores, tilingData, cu_seqlens_q, cu_seqlens_k,
            seqused_q, seqused_k, cmp_residual_k, gmBlockTable, gmZeroPage, gmOutputIdxOffset);
+}
+
+template <typename InputType, typename WeightType, class KeyLoader>
+CATLASS_DEVICE void RunKernelWithMaskPolicy(
+    GM_ADDR query, GM_ADDR key, GM_ADDR weights, GM_ADDR indices, GM_ADDR values,
+    GM_ADDR scores, GM_ADDR block_table, GM_ADDR zero_page, GM_ADDR output_idx_offset,
+    GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_k, GM_ADDR seqused_q, GM_ADDR seqused_k,
+    GM_ADDR cmp_residual_k, bool needMask, GM_ADDR tiling)
+{
+    if (needMask) {
+        RunKernel<InputType, WeightType, KeyLoader, SparseIndexer::Common::Block::LiV2MaskPolicy<float>>(
+            query, key, weights, indices, values, scores, block_table, zero_page, output_idx_offset,
+            cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, tiling);
+    } else {
+        RunKernel<InputType, WeightType, KeyLoader, SparseIndexer::Common::Block::NoMaskPolicy<float>>(
+            query, key, weights, indices, values, scores, block_table, zero_page, output_idx_offset,
+            cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, tiling);
+    }
 }
 
 } // namespace GeneralIndexerKernelDetail

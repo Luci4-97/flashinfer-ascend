@@ -19,6 +19,7 @@
 #include "catlass/catlass.hpp"
 #include "kernel_operator.h"
 
+#include "mask_policy.hpp"
 #include "mask_utils.hpp"
 #include "sparse_indexer_common.hpp"
 
@@ -54,6 +55,7 @@ struct DirectWorkspaceStore {
 /// Sum_h W[s1, h] * ReLU(Q @ K^T)[s1, h, :] over every head, then write this Vector's half of S2.
 template <
     class DtypeScore_, class DtypeW_, class DtypeDst_ = DtypeScore_,
+    class MaskPolicy_ = LiV2MaskPolicy<DtypeScore_>,
     class Store_ = DirectWorkspaceStore<DtypeDst_, DtypeScore_>>
 class BlockReduceHead {
 public:
@@ -72,6 +74,7 @@ public:
     using DtypeW = DtypeW_;
     using DtypeDst = DtypeDst_;
     using Store = Store_;
+    using MaskPolicy = MaskPolicy_;
 
     using ArchTag = Catlass::Arch::Ascend950;
 
@@ -92,7 +95,8 @@ public:
           n1_(params.n1),
           s2_(params.s2),
           s1Tile_(params.s1Tile),
-          s2Tile_(params.s2Tile)
+          s2Tile_(params.s2Tile),
+          maskPolicy_(ubOut_, ubWBrcb_, ubTmp_)
     {
         constexpr uint32_t kWAlign = Catlass::BYTE_PER_BLK / sizeof(DtypeW);
         wStride_ = (n1_ + kWAlign - 1) / kWAlign * kWAlign;
@@ -196,64 +200,6 @@ public:
         }
     }
 
-    /**
-     * VF mask on PIPE_V only (no SetValue):
-     * per-row localK = kBase + j; where localK >= vis, Select IEEE -inf.
-     * All UB ops stay 32B-aligned — unaligned UB DataCopy hits AICore 507015.
-     */
-    CATLASS_DEVICE
-    void ApplyMaskToUb(
-        uint32_t actualS1, uint32_t cols, uint32_t colPerAiv, uint32_t colBegin, uint32_t s2Start,
-        uint32_t localQStart, uint32_t qAct, uint32_t kAct, uint32_t reqKStart, int32_t residual, bool maskActive)
-    {
-        if (!maskActive) {
-            return;
-        }
-
-        const int32_t maskMode = params_.maskMode;
-        const int32_t cmpRatio = params_.cmpRatio;
-        const uint32_t kBase = s2Start + colBegin - reqKStart;
-
-        static_assert(sizeof(DtypeScore) == sizeof(uint32_t), "mask VF assumes FP32 scores");
-        // calcLen is 32B-aligned and within the row stride (colPerAiv is splitN-aligned).
-        uint32_t calcLen = SparseIndexer::Common::AlignUp(cols, kFloatBlock);
-        if (calcLen > colPerAiv) {
-            calcLen = colPerAiv;
-        }
-        AscendC::LocalTensor<uint8_t> maskUb = ubWBrcb_.template ReinterpretCast<uint8_t>();
-        AscendC::LocalTensor<uint32_t> ubTmpU32 = ubTmp_.template ReinterpretCast<uint32_t>();
-
-        AscendC::PipeBarrier<PIPE_V>();
-        for (uint32_t ri = 0; ri < actualS1; ++ri) {
-            const uint32_t localQ = localQStart + ri;
-            uint32_t vis = kAct;
-            if (localQ >= qAct) {
-                vis = 0;
-            } else if (maskMode == 3) {
-                vis = Mask3VisibleLen(localQ, qAct, kAct, cmpRatio, residual);
-            }
-            // Nothing to mask in this AIV slice.
-            if (vis >= kBase + cols) {
-                continue;
-            }
-
-            AscendC::CreateVecIndex(ubTmp_, static_cast<DtypeScore>(0), calcLen);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Adds(ubTmp_, ubTmp_, static_cast<DtypeScore>(kBase), calcLen);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::CompareScalar(
-                maskUb, ubTmp_, static_cast<DtypeScore>(vis), AscendC::CMPMODE::GE, calcLen);
-            AscendC::PipeBarrier<PIPE_V>();
-            // Reuse ubTmp_ for -inf via uint32 bit pattern (aligned at 0).
-            AscendC::Duplicate(ubTmpU32, kFloatNegInfBits, static_cast<int32_t>(calcLen));
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Select(
-                ubOut_[ri * colPerAiv], maskUb, ubTmp_, ubOut_[ri * colPerAiv],
-                AscendC::SELMODE::VSEL_TENSOR_TENSOR_MODE, calcLen);
-        }
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-
     CATLASS_DEVICE
     void operator()(
         uint32_t s1Start, uint32_t actualS1, uint32_t s2Start, uint32_t actualS2, uint32_t localQStart,
@@ -302,7 +248,9 @@ public:
         for (uint32_t h = 0; h < n1_; ++h) {
             ScaleHead(h, actualS1, colPerAiv, cols, h == 0);
         }
-        ApplyMaskToUb(actualS1, cols, colPerAiv, colBegin, s2Start, localQStart, qAct, kAct, reqKStart, residual, maskActive);
+        maskPolicy_.Apply(
+            actualS1, cols, colPerAiv, colBegin, s2Start, localQStart, qAct, kAct, reqKStart, residual,
+            maskActive, params_.maskMode, params_.cmpRatio);
         Store::StoreTile(gmDst_[s1Start * s2_ + s2Start + colBegin], ubOut_, actualS1, cols, colPerAiv, s2_);
     }
 
@@ -322,6 +270,7 @@ private:
     uint32_t s1Tile_{0};
     uint32_t s2Tile_{0};
     uint32_t wStride_{0};
+    MaskPolicy maskPolicy_;
 };
 
 } // namespace SparseIndexer::Common::Block
