@@ -457,3 +457,72 @@ full 内全部 56 个 sparse_indexer/general_indexer 相关用例通过，无失
 因此本次 sparse_indexer family 重构本身无已知回归，但 full 绿色门槛仍受环境、torch_npu/Inductor 能力和目标不适用问题阻塞。
 未验证项：lightning_indexer、同 SoC indexer→sparse attention 真机端到端、图 capture/replay、
 性能、多进程/多卡并发，以及修复环境后的 full 绿色结果。
+
+## 12. kernel layout cleanup 验收（2026-11-16）
+
+参考 `attention/sparse_flash_attention` 后完成以下结构收敛：
+
+```text
+op_kernel/
+├── general_indexer.cpp
+└── arch35/
+    ├── general_indexer.h
+    └── general_indexer_kernel.h
+
+op_host/
+├── general_indexer_def.cpp
+├── general_indexer_infershape.cpp
+├── general_indexer_host.h
+└── arch35/
+    └── general_indexer_tiling.cpp
+
+common/
+├── include/sparse_indexer_common.hpp
+└── op_kernel/block/
+```
+
+清理内容：
+
+- 删除只做转发的 `general_indexer_arch35.h`。
+- 删除未使用的 `GeneralIndexerEntryContiguous/Paged` 模板。
+- 删除 entry 中重复的 `block/key_loader.hpp` include。
+- host 按 OpDef、InferShape/Type、arch35 tiling 拆分。
+- `sparse_indexer_align.hpp` 改为 `sparse_indexer_common.hpp`。
+- common block include guard 改为 `FLASHINFER_SPARSE_INDEXER_COMMON_*`。
+- tiling data 删除不再使用的 CATLASS macro include。
+- BuildConfig 的 host 闭包同步为三个 host source。
+
+最终 spec：
+
+```text
+92e13b6978d4e553a00a5bd07093a386b8737bbc267dd644b2af8152412f86ff
+```
+
+验证：
+
+```text
+generate/check/freeze: PASS
+general_indexer AOT cold build: built=1, failed=0, skipped=0
+test_sparse_indexer_blocks.py: 5 passed
+test_general_indexer_real.py: 8 passed
+quick: 2375 passed, 170 deselected, 0 skipped, 0 failed
+```
+
+最终 Ascend950 wheel：
+
+```text
+/tmp/fi-si-cleanup-wheel.BGMTFA/dist/flashinfer_ascend950-0.1.0.dev0-py3-none-linux_x86_64.whl
+sha256=5dc5ebb89b58ea6edd50fe19553c3152dd33baff27025c694aea966c561c1ada
+```
+
+干净 venv 安装后 selftest：
+
+```text
+Scope: Ascend950; 4 of 4 packaged kernels
+Summary: 4 PASS, 0 FAIL, 0 SKIP (total=4)
+PASS sparse_indexer.general_indexer: bundled AOT hit; compilation=disabled
+spec=92e13b6978d4e553a00a5bd07093a386b8737bbc267dd644b2af8152412f86ff
+```
+
+本次清理未重跑 full；最近一次 full 为 `2485 passed / 31 failed / 21 errors / 6 skipped`，
+其失败项已归因为环境、目标不适用和上游 fixture 问题；所有 sparse_indexer 相关用例通过。

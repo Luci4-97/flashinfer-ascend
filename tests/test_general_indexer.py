@@ -157,7 +157,7 @@ def test_native_sources_and_shared_blocks_use_sparse_indexer_layout():
         if ref.locator.startswith("csrc/kernels/sparse_indexer/common/")
     }
     assert {
-        "csrc/kernels/sparse_indexer/common/include/sparse_indexer_align.hpp",
+        "csrc/kernels/sparse_indexer/common/include/sparse_indexer_common.hpp",
         "csrc/kernels/sparse_indexer/common/op_kernel/block/block_scheduler.hpp",
         "csrc/kernels/sparse_indexer/common/op_kernel/block/key_loader.hpp",
     } <= common_locators
