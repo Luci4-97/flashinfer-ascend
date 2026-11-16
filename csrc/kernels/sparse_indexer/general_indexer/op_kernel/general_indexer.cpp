@@ -5,8 +5,7 @@
 #endif
 #include "kernel_operator.h"
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#include "arch35/general_indexer_arch35.h"
-#include "block/key_loader.hpp"
+#include "arch35/general_indexer.h"
 #else
 #error "general_indexer requires arch35 (__CCE_AICORE__ == 310)"
 #endif

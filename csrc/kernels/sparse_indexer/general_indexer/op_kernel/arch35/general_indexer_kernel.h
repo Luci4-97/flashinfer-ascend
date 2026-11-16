@@ -9,8 +9,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASHINFER_GENERAL_INDEXER_KERNEL_HPP
-#define FLASHINFER_GENERAL_INDEXER_KERNEL_HPP
+#ifndef FLASHINFER_GENERAL_INDEXER_ARCH35_KERNEL_H
+#define FLASHINFER_GENERAL_INDEXER_ARCH35_KERNEL_H
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/detail/alignment.hpp"
@@ -177,4 +177,4 @@ private:
     AscendC::LocalTensor<typename BlockMmad::DtypeC> ubC_;
 };
 
-#endif // FLASHINFER_GENERAL_INDEXER_KERNEL_HPP
+#endif // FLASHINFER_GENERAL_INDEXER_ARCH35_KERNEL_H

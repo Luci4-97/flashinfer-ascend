@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BLOCK = ROOT / "csrc/kernels/sparse_indexer/common/op_kernel/block"
-KERNEL = ROOT / "csrc/kernels/sparse_indexer/general_indexer/op_kernel/general_indexer_kernel.hpp"
+KERNEL = ROOT / "csrc/kernels/sparse_indexer/general_indexer/op_kernel/arch35/general_indexer_kernel.h"
 COMMON = ROOT / "csrc/kernels/sparse_indexer/common"
 
 
