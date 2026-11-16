@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
-#include <vector>
 
 #include <acl/acl.h>
 
@@ -75,43 +74,11 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
         if (batch != 1) {
             throw std::invalid_argument("GeneralIndexerTiling: batch must be 1 without cu_seqlens");
         }
-        tilingData.cuSeqlensQ[0] = 0;
-        tilingData.cuSeqlensQ[1] = static_cast<int32_t>(params.s1);
-        tilingData.cuSeqlensK[0] = 0;
-        tilingData.cuSeqlensK[1] = static_cast<int32_t>(params.s2);
     } else {
         if (batch < 1 || batch > GeneralIndexerTilingData::kMaxBatch) {
             throw std::invalid_argument("GeneralIndexerTiling: batch must be in [1, kMaxBatch] with cu_seqlens");
         }
-        std::vector<int32_t> cuQ(batch + 1);
-        std::vector<int32_t> cuK(batch + 1);
-        const size_t bytes = static_cast<size_t>(batch + 1) * sizeof(int32_t);
-        if (aclrtMemcpy(cuQ.data(), bytes, params.cuSeqlensQ, bytes, ACL_MEMCPY_DEVICE_TO_HOST) != ACL_ERROR_NONE) {
-            throw std::runtime_error("GeneralIndexerTiling: failed to copy cuSeqlensQ");
-        }
-        if (aclrtMemcpy(cuK.data(), bytes, params.cuSeqlensK, bytes, ACL_MEMCPY_DEVICE_TO_HOST) != ACL_ERROR_NONE) {
-            throw std::runtime_error("GeneralIndexerTiling: failed to copy cuSeqlensK");
-        }
-        if (cuQ[0] != 0 || cuK[0] != 0) {
-            throw std::invalid_argument("GeneralIndexerTiling: cu_seqlens must start with 0");
-        }
-        if (static_cast<uint32_t>(cuQ[batch]) != params.s1 || static_cast<uint32_t>(cuK[batch]) != params.s2) {
-            throw std::invalid_argument("GeneralIndexerTiling: cu_seqlens end must equal s1/s2");
-        }
-        for (uint32_t b = 0; b < batch; ++b) {
-            if (cuQ[b + 1] < cuQ[b] || cuK[b + 1] < cuK[b]) {
-                throw std::invalid_argument("GeneralIndexerTiling: cu_seqlens must be non-decreasing");
-            }
-            const uint32_t kLen = static_cast<uint32_t>(cuK[b + 1] - cuK[b]);
-            if (kLen > 0 && params.k > kLen) {
-                throw std::invalid_argument("GeneralIndexerTiling: k must be <= each request's key length");
-            }
-        }
         tilingData.hasCuSeqlens = 1;
-        for (uint32_t i = 0; i <= batch; ++i) {
-            tilingData.cuSeqlensQ[i] = cuQ[i];
-            tilingData.cuSeqlensK[i] = cuK[i];
-        }
     }
 
     tilingData.s1 = params.s1;
@@ -137,49 +104,9 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
             throw std::invalid_argument("GeneralIndexerTiling: paged Key requires sequsedK");
         }
     }
-    tilingData.hasSequsedQ = 0;
-    tilingData.hasSequsedK = 0;
+    tilingData.hasSequsedQ = params.sequsedQ != nullptr ? 1U : 0U;
+    tilingData.hasSequsedK = params.sequsedK != nullptr ? 1U : 0U;
     tilingData.hasCmpResidualK = params.cmpResidualK != nullptr ? 1U : 0U;
-    for (uint32_t b = 0; b < batch; ++b) {
-        const uint32_t qLen = static_cast<uint32_t>(tilingData.cuSeqlensQ[b + 1] - tilingData.cuSeqlensQ[b]);
-        const uint32_t kLen = static_cast<uint32_t>(tilingData.cuSeqlensK[b + 1] - tilingData.cuSeqlensK[b]);
-        tilingData.sequsedQ[b] = static_cast<int32_t>(qLen);
-        tilingData.sequsedK[b] = static_cast<int32_t>(kLen);
-        tilingData.cmpResidualK[b] = 0;
-    }
-    if (params.sequsedQ != nullptr) {
-        std::vector<int32_t> seqQ(batch);
-        const size_t bytes = static_cast<size_t>(batch) * sizeof(int32_t);
-        if (aclrtMemcpy(seqQ.data(), bytes, params.sequsedQ, bytes, ACL_MEMCPY_DEVICE_TO_HOST) != ACL_ERROR_NONE) {
-            throw std::runtime_error("GeneralIndexerTiling: failed to copy sequsedQ");
-        }
-        for (uint32_t b = 0; b < batch; ++b) {
-            tilingData.sequsedQ[b] = seqQ[b];
-        }
-        tilingData.hasSequsedQ = 1;
-    }
-    if (params.sequsedK != nullptr) {
-        std::vector<int32_t> seqK(batch);
-        const size_t bytes = static_cast<size_t>(batch) * sizeof(int32_t);
-        if (aclrtMemcpy(seqK.data(), bytes, params.sequsedK, bytes, ACL_MEMCPY_DEVICE_TO_HOST) != ACL_ERROR_NONE) {
-            throw std::runtime_error("GeneralIndexerTiling: failed to copy sequsedK");
-        }
-        for (uint32_t b = 0; b < batch; ++b) {
-            tilingData.sequsedK[b] = seqK[b];
-        }
-        tilingData.hasSequsedK = 1;
-    }
-    if (params.cmpResidualK != nullptr) {
-        std::vector<int32_t> residual(batch);
-        const size_t bytes = static_cast<size_t>(batch) * sizeof(int32_t);
-        if (aclrtMemcpy(residual.data(), bytes, params.cmpResidualK, bytes, ACL_MEMCPY_DEVICE_TO_HOST) !=
-            ACL_ERROR_NONE) {
-            throw std::runtime_error("GeneralIndexerTiling: failed to copy cmpResidualK");
-        }
-        for (uint32_t b = 0; b < batch; ++b) {
-            tilingData.cmpResidualK[b] = residual[b];
-        }
-    }
 
     uint32_t wElemBytes = 2;
     if (params.weightsDataType == ACL_FLOAT) {

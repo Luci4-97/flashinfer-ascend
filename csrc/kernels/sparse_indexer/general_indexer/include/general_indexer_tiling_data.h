@@ -19,9 +19,9 @@
 /**
  * @brief Device-visible tiling for the general indexer.
  *
- * Host embeds cu_seqlens / seqused / cmp residual so AIC/AIV can schedule and
- * mask without GetValue on separate GM buffers. Runtime Tensor addresses are
- * passed explicitly to the kernel entry and are never cached in tiling data.
+ * Host records only static geometry and optional-input presence. cu_seqlens,
+ * seqused and cmp residual are read by the kernel from their GM tensor arguments,
+ * matching the LI V2 runtime metadata path.
  */
 struct GeneralIndexerTilingData {
     static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
@@ -40,11 +40,6 @@ struct GeneralIndexerTilingData {
     uint32_t hasCmpResidualK{0};
     int32_t maskMode{0};
     int32_t cmpRatio{1};
-    int32_t cuSeqlensQ[kMaxBatch + 1]{0};
-    int32_t cuSeqlensK[kMaxBatch + 1]{0};
-    int32_t sequsedQ[kMaxBatch]{0};
-    int32_t sequsedK[kMaxBatch]{0};
-    int32_t cmpResidualK[kMaxBatch]{0};
     uint32_t hasOutputIdxOffset{0};
 
     // PA_BBND in-kernel paging metadata. Tensor pointers are kernel arguments.

@@ -26,30 +26,6 @@ public:
     GeneralIndexerRequestSource() = default;
 
     CATLASS_DEVICE
-    void InitFromTiling(__gm__ GeneralIndexerTilingData const* tiling)
-    {
-        s1_ = tiling->s1;
-        s2_ = tiling->s2;
-        batch_ = tiling->batch == 0 ? 1U : tiling->batch;
-        if (batch_ > kMaxBatch) {
-            batch_ = 1U;
-        }
-        maskMode_ = tiling->maskMode;
-        hasSequsedQ_ = tiling->hasSequsedQ != 0;
-        hasSequsedK_ = tiling->hasSequsedK != 0;
-        hasCmpResidualK_ = tiling->hasCmpResidualK != 0;
-        for (uint32_t i = 0; i <= batch_; ++i) {
-            cuQ_[i] = tiling->cuSeqlensQ[i];
-            cuK_[i] = tiling->cuSeqlensK[i];
-        }
-        for (uint32_t i = 0; i < batch_; ++i) {
-            sequsedQ_[i] = tiling->sequsedQ[i];
-            sequsedK_[i] = tiling->sequsedK[i];
-            cmpResidualK_[i] = tiling->cmpResidualK[i];
-        }
-    }
-
-    CATLASS_DEVICE
     void InitFromGm(
         __gm__ GeneralIndexerTilingData const* tiling, GM_ADDR cuSeqlensQ, GM_ADDR cuSeqlensK,
         GM_ADDR sequsedQ, GM_ADDR sequsedK, GM_ADDR cmpResidualK)
