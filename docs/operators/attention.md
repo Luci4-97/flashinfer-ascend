@@ -59,13 +59,9 @@ attention_out, softmax_max, softmax_sum = flashinfer.sparse_flash_attention(
 
 A2/A3 使用相同公共接口与 runner，910B 包含各自的冻结原生产物；A3 真机数值未验证。
 
-## Ascend950 GeneralIndexer
+## Sparse Indexer
 
-公共入口为 `flashinfer.general_indexer`，固定返回 `(indices, values, scores)`；未请求的可选输出返回形状 `(0,)` 的 FP32 Tensor。计算为按 head 加权 `ReLU(Q @ K^T)` 后执行稳定 TopK，支持 SND/TND/BSND 与 PA_BBND 布局。
-
-支持 Q/K 的 FP16/BF16 同 dtype 组合，W 支持 FP16/BF16/FP32；Ascend950 上 D=16..64、N1=1..64、B≤16、k≤8192、Tq/Tk≤16384，并要求连续 ND 输入。PA_BBND 必须提供 `block_table`、`seqused_k` 和 `max_seq_len_k`。
-
-该实现为 eager AOT-only，图能力保持 `NOT_CAPTURABLE`；未做性能声明。源码：[公共定义](../../flashinfer/operators/sparse_indexer/general_indexer/operator.py)、[AOT/runner](../../flashinfer/ascendc/sparse_indexer/general_indexer/)、[设备实现](../../csrc/kernels/sparse_indexer/general_indexer/)。验收见 [迁移报告](../reports/general-indexer-migration.md)。
+`sparse_indexer` 是独立逻辑 domain，当前成员为 `sparse_indexer.general_indexer`；它与 sparse attention 通过 Tensor 契约组合，不属于 attention 实现。详见 [Sparse Indexer](sparse-indexer.md)。
 
 ## 支持与缺口
 
@@ -73,4 +69,4 @@ A2/A3 使用相同公共接口与 runner，910B 包含各自的冻结原生产�
 
 混合 BatchAttention、量化 KV provider 和完整上游 MLA/sparse/POD wrapper 尚未形成默认 NPU 产品面。保留的 Host 合同不是可运行后端说明；接口与图扩展目标集中在 [规划](../roadmap.md)。
 
-源码：[single 前端](../../flashinfer/_single_attention.py)、[batch 前端](../../flashinfer/attention/public_batch.py)、[CATLASS 声明](../../flashinfer/ascendc/attention/single_prefill_catlass/implementation.py)、[SFA 公共定义](../../flashinfer/operators/attention/sparse_flash_attention/operator.py)、[SFA 声明/runner](../../flashinfer/ascendc/attention/sparse_flash_attention/)、[GeneralIndexer 定义](../../flashinfer/operators/sparse_indexer/general_indexer/operator.py)。
+源码：[single 前端](../../flashinfer/_single_attention.py)、[batch 前端](../../flashinfer/attention/public_batch.py)、[CATLASS 声明](../../flashinfer/ascendc/attention/single_prefill_catlass/implementation.py)、[SFA 公共定义](../../flashinfer/operators/attention/sparse_flash_attention/operator.py)、[SFA 声明/runner](../../flashinfer/ascendc/attention/sparse_flash_attention/)。

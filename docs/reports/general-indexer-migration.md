@@ -348,3 +348,112 @@ general_indexer real + operator package:
 合并矩阵第一次运行中 `topk_upper_bound_and_d64_n64` 子进程达到 300 秒超时；当时机器上有其他用户的大量 bisheng/CANN 编译任务。该 case 独立复跑通过，未观察到数值断言失败。
 
 尚未在 rebase 后的新打包结构上重建 wheel，也尚未重跑仓库级 full。当前结论不包含性能、图 capture/replay 或多卡并发。
+
+## 11. sparse_indexer family 重构验收（2026-11-16）
+
+本次将 general_indexer 从 attention 逻辑域迁移到 `sparse_indexer` family：
+
+```text
+logical op: sparse_indexer.general_indexer
+public API: flashinfer.general_indexer
+kernel_id: ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950
+```
+
+`flashinfer.general_indexer` 名称、签名、固定三输出和数值语义保持不变。
+`lightning_indexer` 只作为未来同 domain 的命名空间预留；本次没有创建、注册或构建。
+
+目录：
+
+```text
+flashinfer/operators/sparse_indexer/general_indexer/
+flashinfer/ascendc/sparse_indexer/general_indexer/
+csrc/kernels/sparse_indexer/general_indexer/
+csrc/kernels/sparse_indexer/common/include/sparse_indexer_align.hpp
+csrc/kernels/sparse_indexer/common/op_kernel/block/
+```
+
+Block 解耦：
+
+- Scheduler、KeyLoader、BlockMmad、BlockReduceHead、BlockTopK 均定义运行时 `Params`。
+- general_indexer kernel 入口负责把 `GeneralIndexerTilingData` 投影为 block Params。
+- `sparse_indexer/common` 不包含 `GeneralIndexerTilingData` 或 concrete tiling header。
+- common namespace 统一为 `SparseIndexer::Common`。
+- BuildConfig 支持 `shared_native_roots/shared_includes`；公共头进入 recipe fingerprint、staging 和 wheel。
+- 修复 textual `#include` 的 `.cpp` 文件未进入 native closure 的回归。
+
+生成与 AOT：
+
+```text
+generate/check: PASS
+freeze --all: PASS
+general_indexer spec:
+275c240f5e4ead3a49072cc69ae4b1183216d99f03f2eb932f92b0ff436caa31
+AOT cold build: requested=1, built=1, failed=0, skipped=0
+```
+
+定向验证：
+
+```text
+test_general_indexer.py + test_operator_layout.py +
+test_sparse_indexer_blocks.py + test_shared_native_inputs.py: 50 passed
+test_general_indexer_real.py: 8 passed
+test_operator_packages_real.py -k general_indexer: 6 passed
+test_ascendc_entries.py: 20 passed
+test_sparse_indexer_contract.py: 2 passed
+```
+
+Producer-consumer 契约：
+
+- general_indexer 输出 token TopK `[Tq,k]`。
+- sparse attention 需要 KV block 索引 `[B,Sq,1,Ns]` 或 `[Tq,1,Ns]`，尾部 `-1`。
+- 两者必须显式 token→block 转换、去重和填充，不是直接同形接口。
+- 当前 general_indexer 为 Ascend950，现有 SparseFlashAttention 为 Ascend910B/Ascend910C；
+  同 SoC 生产级端到端真机尚未验证。
+
+Quick：
+
+```text
+2373 passed, 170 deselected, 0 skipped, 0 failed
+exit_code=0
+```
+
+Ascend950 wheel：
+
+```text
+/tmp/fi-sparse-indexer-wheel.nyRpQE/dist/flashinfer_ascend950-0.1.0.dev0-py3-none-linux_x86_64.whl
+sha256=7aae8903af41b310487c11db85203da6316d3fbe55051caa38e69ebdffbd928a
+wheel.json kernel_ids=4，包含 sparse_indexer/general_indexer
+```
+
+干净 venv 安装：
+
+```text
+flashinfer.__file__=<venv>/site-packages/flashinfer/__init__.py
+Scope: Ascend950; 4 of 4 packaged kernels; other SoCs are not runtime-validated
+Summary: 4 PASS, 0 FAIL, 0 SKIP (total=4)
+PASS sparse_indexer.general_indexer: bundled AOT hit; compilation=disabled
+```
+
+Full：
+
+```text
+build/regression/20261116-122209-387812/
+2485 passed, 31 failed, 21 errors, 6 skipped, 404 subtests passed
+exit_code=1
+```
+
+full 内全部 56 个 sparse_indexer/general_indexer 相关用例通过，无失败、无 skip。
+其余 52 个 failure/error：
+
+- target 不适用：17。
+- `torch_npu.npu.set_task_queue_enable` 不存在：9。
+- `triton` 未安装：8。
+- ACLNN adapter 路径缺失：7。
+- Inductor 不支持 NPU：5。
+- 上游 CATLASS golden fixture digest 与冻结常量不一致：6。
+
+6 个 skip 全部为 `No module named 'triton'`。
+
+因此本次 sparse_indexer family 重构本身无已知回归，但 full 绿色门槛仍受环境、torch_npu/Inductor 能力和目标不适用问题阻塞。
+未验证项：lightning_indexer、同 SoC indexer→sparse attention 真机端到端、图 capture/replay、
+性能、多进程/多卡并发，以及修复环境后的 full 绿色结果。

@@ -52,7 +52,7 @@ python -m flashinfer show-config
 
 [开始使用](docs/getting-started.md) · [架构](docs/concepts/architecture.md) · [路由](docs/concepts/backend-routing.md) · [算子支持](docs/backends/overview.md)
 
-[接入算子](docs/development/adding-an-operator.md) · [编译交付](docs/ascendc_aot.md) · [图模式](docs/npu_graph_extensions.md) · [Tuning](docs/tuning.md) · [规划与差距](docs/roadmap.md)
+[Sparse Indexer](docs/operators/sparse-indexer.md) · [接入算子](docs/development/adding-an-operator.md) · [编译交付](docs/ascendc_aot.md) · [图模式](docs/npu_graph_extensions.md) · [Tuning](docs/tuning.md) · [规划与差距](docs/roadmap.md)
 
 完整说明见 [文档导航](docs/README.md)；上游签名与能力边界见 [兼容说明](docs/upstream-compatibility.md)。
 
