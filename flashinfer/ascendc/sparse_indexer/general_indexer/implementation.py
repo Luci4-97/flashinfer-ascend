@@ -81,7 +81,11 @@ IMPLEMENTATION = AscendCImplementation(
     ),
     build=BuildConfig(
         device="op_kernel/general_indexer.cpp",
-        host=("op_host/general_indexer.cpp",),
+        host=(
+            "op_host/general_indexer_def.cpp",
+            "op_host/general_indexer_infershape.cpp",
+            "op_host/arch35/general_indexer_tiling.cpp",
+        ),
         op_type="FiGeneralIndexer",
         tiling="FiGeneralIndexerTiling",
         includes=("op_kernel", "op_host", "include"),
