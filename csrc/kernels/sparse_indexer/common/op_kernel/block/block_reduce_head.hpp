@@ -22,7 +22,7 @@
 #include "mask_utils.hpp"
 #include "sparse_indexer_align.hpp"
 
-namespace GeneralIndexer::Block {
+namespace SparseIndexer::Common::Block {
 
 /// Copy a UB tile to GM. A different destination type supplies its own store.
 template <class DtypeDst_, class DtypeScore_>
@@ -335,6 +335,6 @@ private:
     uint32_t wStride_{0};
 };
 
-} // namespace GeneralIndexer::Block
+} // namespace SparseIndexer::Common::Block
 
 #endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_REDUCE_HEAD_HPP

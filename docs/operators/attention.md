@@ -65,7 +65,7 @@ A2/A3 使用相同公共接口与 runner，910B 包含各自的冻结原生产�
 
 支持 Q/K 的 FP16/BF16 同 dtype 组合，W 支持 FP16/BF16/FP32；Ascend950 上 D=16..64、N1=1..64、B≤16、k≤8192、Tq/Tk≤16384，并要求连续 ND 输入。PA_BBND 必须提供 `block_table`、`seqused_k` 和 `max_seq_len_k`。
 
-该实现为 eager AOT-only，图能力保持 `NOT_CAPTURABLE`；未做性能声明。源码：[公共定义](../../flashinfer/operators/sparse_indexer/general_indexer/operator.py)、[AOT/runner](../../flashinfer/ascendc/sparse_indexer/general_indexer/)、[设备实现](../../csrc/kernels/attention/general_indexer/)。验收见 [迁移报告](../reports/general-indexer-migration.md)。
+该实现为 eager AOT-only，图能力保持 `NOT_CAPTURABLE`；未做性能声明。源码：[公共定义](../../flashinfer/operators/sparse_indexer/general_indexer/operator.py)、[AOT/runner](../../flashinfer/ascendc/sparse_indexer/general_indexer/)、[设备实现](../../csrc/kernels/sparse_indexer/general_indexer/)。验收见 [迁移报告](../reports/general-indexer-migration.md)。
 
 ## 支持与缺口
 

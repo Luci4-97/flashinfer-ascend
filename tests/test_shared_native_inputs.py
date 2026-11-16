@@ -28,14 +28,14 @@ def _build(**changes):
 
 def test_build_config_accepts_shared_native_roots_and_includes():
     build = _build(
-        shared_native_roots=("csrc/kernels/attention/general_indexer/op_kernel/block",),
-        shared_includes=("csrc/kernels/attention/general_indexer/op_kernel/block",),
+        shared_native_roots=("csrc/kernels/sparse_indexer/common/op_kernel/block",),
+        shared_includes=("csrc/kernels/sparse_indexer/common/op_kernel/block",),
     )
     assert build.shared_native_roots == (
-        "csrc/kernels/attention/general_indexer/op_kernel/block",
+        "csrc/kernels/sparse_indexer/common/op_kernel/block",
     )
     assert build.shared_includes == (
-        "csrc/kernels/attention/general_indexer/op_kernel/block",
+        "csrc/kernels/sparse_indexer/common/op_kernel/block",
     )
 
 

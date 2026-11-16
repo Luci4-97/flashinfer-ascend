@@ -85,8 +85,14 @@ IMPLEMENTATION = AscendCImplementation(
         op_type="FiGeneralIndexer",
         tiling="FiGeneralIndexerTiling",
         includes=("op_kernel", "op_host", "include"),
-        shared_native_roots=("csrc/kernels/sparse_indexer/common/include",),
-        shared_includes=("csrc/kernels/sparse_indexer/common/include",),
+        shared_native_roots=(
+            "csrc/kernels/sparse_indexer/common/include",
+            "csrc/kernels/sparse_indexer/common/op_kernel",
+        ),
+        shared_includes=(
+            "csrc/kernels/sparse_indexer/common/include",
+            "csrc/kernels/sparse_indexer/common/op_kernel",
+        ),
         implementation="catlass",
         dependencies=(BuildDependency(name="catlass", revision=CATLASS_REVISION),),
         definitions=("CATLASS_ARCH=3510",),
@@ -99,7 +105,7 @@ IMPLEMENTATION = AscendCImplementation(
         package_vendor="flashinfer_general_indexer",
         recipe_id="general_indexer",
     ),
-    source_dir="csrc/kernels/attention/general_indexer",
+    source_dir="csrc/kernels/sparse_indexer/general_indexer",
     binding=NativeBinding(
         tensors=_TENSORS,
         dimensions=(

@@ -14,7 +14,7 @@
 #include "mask_utils.hpp"
 #include "sparse_indexer_align.hpp"
 
-namespace GeneralIndexer::Block {
+namespace SparseIndexer::Common::Block {
 
 namespace detail {
 
@@ -417,6 +417,6 @@ private:
     uint32_t tileColAlign_{0};
 };
 
-} // namespace GeneralIndexer::Block
+} // namespace SparseIndexer::Common::Block
 
 #endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_TOPK_HPP

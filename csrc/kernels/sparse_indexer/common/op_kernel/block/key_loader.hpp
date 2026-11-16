@@ -13,7 +13,7 @@
 
 #include "sparse_indexer_align.hpp"
 
-namespace GeneralIndexer::Block {
+namespace SparseIndexer::Common::Block {
 
 /**
  * Contiguous Key → L1B (default path).
@@ -177,6 +177,6 @@ private:
     int32_t cuK_[kMaxBatch + 1]{0};
 };
 
-} // namespace GeneralIndexer::Block
+} // namespace SparseIndexer::Common::Block
 
 #endif // FLASHINFER_GENERAL_INDEXER_BLOCK_KEY_LOADER_HPP

@@ -15,7 +15,7 @@
 #include <cstdint>
 #include "kernel_operator.h"
 
-namespace GeneralIndexer::Block {
+namespace SparseIndexer::Common::Block {
 
 /// IEEE-754 float -inf bit pattern (shared by Reduce mask writes and TopK filters).
 inline constexpr uint32_t kFloatNegInfBits = 0xFF800000U;
@@ -50,6 +50,6 @@ CATLASS_DEVICE uint32_t Mask3VisibleLen(
     return vis < kAct ? vis : kAct;
 }
 
-} // namespace GeneralIndexer::Block
+} // namespace SparseIndexer::Common::Block
 
 #endif // FLASHINFER_GENERAL_INDEXER_BLOCK_MASK_UTILS_HPP

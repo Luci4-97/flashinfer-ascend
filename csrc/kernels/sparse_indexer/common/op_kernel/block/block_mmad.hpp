@@ -29,7 +29,7 @@
 #include "key_loader.hpp"
 #include "sparse_indexer_align.hpp"
 
-namespace GeneralIndexer::Block {
+namespace SparseIndexer::Common::Block {
 
 template <class DtypeA_, class DtypeB_, class KeyLoader_ = ContiguousKeyLoader<Catlass::Arch::Ascend950,
                                                    Catlass::Gemm::GemmType<DtypeB_, Catlass::layout::ColumnMajor>>>
@@ -189,6 +189,6 @@ private:
     TileMmad tileMmad_;
 };
 
-} // namespace GeneralIndexer::Block
+} // namespace SparseIndexer::Common::Block
 
 #endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_MMAD_HPP

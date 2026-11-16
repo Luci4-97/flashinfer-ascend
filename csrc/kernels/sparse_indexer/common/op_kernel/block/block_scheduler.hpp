@@ -18,7 +18,7 @@
 
 #include "sparse_indexer_align.hpp"
 
-namespace GeneralIndexer::Block {
+namespace SparseIndexer::Common::Block {
 
 /**
  * Request-aware mmad/reduce/TopK scheduler.
@@ -164,6 +164,6 @@ private:
     uint64_t nextQTile{0};
 };
 
-} // namespace GeneralIndexer::Block
+} // namespace SparseIndexer::Common::Block
 
 #endif // FLASHINFER_GENERAL_INDEXER_BLOCK_BLOCK_SCHEDULER_HPP

@@ -33,23 +33,23 @@
 
 namespace GeneralIndexerKernelDetail {
 
-using BlockScheduler = GeneralIndexer::Block::BlockScheduler;
+using BlockScheduler = SparseIndexer::Common::Block::BlockScheduler;
 
 template <class InputType>
-using ContiguousKeyLoader = GeneralIndexer::Block::ContiguousKeyLoader<
+using ContiguousKeyLoader = SparseIndexer::Common::Block::ContiguousKeyLoader<
     Catlass::Arch::Ascend950, Catlass::Gemm::GemmType<InputType, Catlass::layout::ColumnMajor>>;
 
 template <class InputType>
-using PagedKeyLoader = GeneralIndexer::Block::PagedKeyLoader<
+using PagedKeyLoader = SparseIndexer::Common::Block::PagedKeyLoader<
     Catlass::Arch::Ascend950, Catlass::Gemm::GemmType<InputType, Catlass::layout::ColumnMajor>>;
 
 template <class InputType, class KeyLoader>
-using BlockMmad = GeneralIndexer::Block::BlockMmad<InputType, InputType, KeyLoader>;
+using BlockMmad = SparseIndexer::Common::Block::BlockMmad<InputType, InputType, KeyLoader>;
 
 template <class WeightType>
-using BlockReduceHead = GeneralIndexer::Block::BlockReduceHead<float, WeightType, float>;
+using BlockReduceHead = SparseIndexer::Common::Block::BlockReduceHead<float, WeightType, float>;
 
-using BlockTopK = GeneralIndexer::Block::BlockTopK<float, int32_t>;
+using BlockTopK = SparseIndexer::Common::Block::BlockTopK<float, int32_t>;
 
 template <class InputType, class WeightType, class KeyLoader>
 using Kernel = GeneralIndexerKernel<

@@ -137,6 +137,7 @@ def test_native_sources_and_shared_blocks_use_sparse_indexer_layout():
     assert native.source_dir == "csrc/kernels/sparse_indexer/general_indexer"
     assert not (root / "csrc/kernels/attention/general_indexer").exists()
     assert native.build.shared_native_roots == (
+        "csrc/kernels/sparse_indexer/common/include",
         "csrc/kernels/sparse_indexer/common/op_kernel",
     )
     assert native.build.shared_includes == (
