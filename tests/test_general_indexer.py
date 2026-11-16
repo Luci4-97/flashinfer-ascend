@@ -90,6 +90,18 @@ def test_invalid_shape_or_attribute_is_rejected(change, match):
         infer(**change)
 
 
+def test_d128_shape_is_accepted():
+    invocation = infer(
+        query=Tensor((8, 2, 128)), key=Tensor((32, 128)), weights=Tensor((8, 2))
+    )
+    assert [o.shape for o in invocation.outputs] == [(8, 4), (0,), (0,)]
+
+
+def test_head_dim_above_d128_is_rejected():
+    with pytest.raises(ValueError, match="head dim"):
+        infer(query=Tensor((8, 2, 144)), key=Tensor((32, 144)), weights=Tensor((8, 2)))
+
+
 def test_native_recipe_declares_full_ordered_abi():
     from flashinfer.ascendc.sparse_indexer.general_indexer.implementation import NATIVE
     from flashinfer.jit.recipe import CATLASS_REVISION

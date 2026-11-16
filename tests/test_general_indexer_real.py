@@ -54,6 +54,10 @@ def test_topk_upper_bound_and_d64_n64(general_indexer_environment):
     _run_case(general_indexer_environment, "topk_upper_bound_and_d64_n64")
 
 
+def test_d128_n64(general_indexer_environment):
+    _run_case(general_indexer_environment, "d128_n64")
+
+
 def test_empty_key_request_initializes_invalid_outputs(general_indexer_environment):
     _run_case(general_indexer_environment, "empty_key_request_initializes_invalid_outputs")
 

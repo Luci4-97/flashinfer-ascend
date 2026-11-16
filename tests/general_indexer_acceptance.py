@@ -142,6 +142,20 @@ def topk_upper_bound_and_d64_n64():
     _assert_outputs(actual, expected)
 
 
+def d128_n64():
+    torch.manual_seed(910)
+    s1, n1, s2, d, topk = 8, 64, 32, 128, 16
+    query = torch.randn(s1, n1, d, dtype=torch.bfloat16) * 0.1
+    key = torch.randn(s2, d, dtype=torch.bfloat16) * 0.1
+    weights = torch.randn(s1, n1, dtype=torch.float32)
+    actual = _call(query, key, weights, topk, return_value=True, return_score=True)
+    expected = golden(
+        torch, query, key, weights, topk,
+        return_value=True, return_score=True,
+    )
+    _assert_outputs(actual, expected)
+
+
 def empty_key_request_initializes_invalid_outputs():
     torch.manual_seed(906)
     query = torch.randn(8, 2, 16, dtype=torch.float16)
@@ -232,6 +246,7 @@ CASES = {
     "paged_scrambled_tail_and_illegal_page": paged_scrambled_tail_and_illegal_page,
     "large_s2_and_stable_tie_break": large_s2_and_stable_tie_break,
     "topk_upper_bound_and_d64_n64": topk_upper_bound_and_d64_n64,
+    "d128_n64": d128_n64,
     "empty_key_request_initializes_invalid_outputs": empty_key_request_initializes_invalid_outputs,
     "flat_seqused_q_without_cu_seqlens": flat_seqused_q_without_cu_seqlens,
     "paged_4d_key_and_multi_batch_offset": paged_4d_key_and_multi_batch_offset,
