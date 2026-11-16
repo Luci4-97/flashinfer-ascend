@@ -111,6 +111,69 @@ def test_top_level_export_is_installed():
     assert callable(flashinfer.general_indexer)
 
 
+def test_sparse_indexer_domain_owns_general_indexer_without_lightning_variant():
+    from pathlib import Path
+
+    from flashinfer.operators.catalog import entries
+
+    root = Path(__file__).resolve().parents[1]
+    records = {record["op"]: record for record in entries()}
+    record = records["sparse_indexer.general_indexer"]
+    assert record["domain"] == "sparse_indexer"
+    assert record["name"] == "general_indexer"
+    assert "attention.general_indexer" not in records
+    assert not any("lightning_indexer" in name for name in records)
+    assert not (root / "flashinfer/operators/sparse_indexer/lightning_indexer").exists()
+
+
+def test_native_sources_and_shared_blocks_use_sparse_indexer_layout():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    native = IMPLEMENTATION.native
+    common = root / "csrc/kernels/sparse_indexer/common/op_kernel/block"
+    assert native.source_dir == "csrc/kernels/sparse_indexer/general_indexer"
+    assert not (root / "csrc/kernels/attention/general_indexer").exists()
+    assert native.build.shared_native_roots == (
+        "csrc/kernels/sparse_indexer/common/op_kernel",
+    )
+    assert native.build.shared_includes == (
+        "csrc/kernels/sparse_indexer/common/include",
+        "csrc/kernels/sparse_indexer/common/op_kernel",
+    )
+    prepared = IMPLEMENTATION.prepare_outputs(root)
+    recipe = prepared["recipe"]
+    assert recipe.kernel_id == (
+        "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"
+    )
+    assert recipe.source.locator == (
+        "csrc/kernels/sparse_indexer/general_indexer/op_kernel/general_indexer.cpp"
+    )
+    common_locators = {
+        ref.locator for ref in recipe.headers
+        if ref.locator.startswith("csrc/kernels/sparse_indexer/common/")
+    }
+    assert {
+        "csrc/kernels/sparse_indexer/common/include/sparse_indexer_align.hpp",
+        "csrc/kernels/sparse_indexer/common/op_kernel/block/block_scheduler.hpp",
+        "csrc/kernels/sparse_indexer/common/op_kernel/block/key_loader.hpp",
+    } <= common_locators
+    assert common.is_dir()
+
+
+def test_common_blocks_do_not_depend_on_concrete_general_indexer_tiling():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    common = root / "csrc/kernels/sparse_indexer/common"
+    sources = tuple(common.rglob("*.hpp"))
+    assert sources
+    for source in sources:
+        text = source.read_text()
+        assert "general_indexer_tiling_data.h" not in text, source
+        assert "GeneralIndexerTilingData" not in text, source
+
+
 def test_cpu_golden_is_stable_and_pads_values():
     import torch
 
