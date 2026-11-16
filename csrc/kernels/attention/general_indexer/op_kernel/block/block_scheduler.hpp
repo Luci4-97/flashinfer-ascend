@@ -16,7 +16,7 @@
 #include "catlass/detail/alignment.hpp"
 #include "kernel_operator.h"
 
-#include "general_indexer_tiling_data.h"
+#include "sparse_indexer_align.hpp"
 
 namespace GeneralIndexer::Block {
 
@@ -26,22 +26,32 @@ namespace GeneralIndexer::Block {
  */
 class BlockScheduler {
 public:
-    static constexpr uint32_t kMaxBatch = GeneralIndexerTilingData::kMaxBatch;
+    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
+
+    struct Params {
+        uint32_t s1{0};
+        uint32_t s2{0};
+        uint32_t s1Tile{0};
+        uint32_t s2Tile{0};
+        uint32_t batch{1};
+        int32_t cuQ[kMaxBatch + 1]{0};
+        int32_t cuK[kMaxBatch + 1]{0};
+    };
 
     CATLASS_DEVICE
-    BlockScheduler(__gm__ GeneralIndexerTilingData const* tiling)
-        : s1(tiling->s1),
-          s2(tiling->s2),
-          s1Tile(tiling->s1Tile),
-          s2Tile(tiling->s2Tile),
-          batch(tiling->batch == 0 ? 1U : tiling->batch)
+    explicit BlockScheduler(Params const& params)
+        : s1(params.s1),
+          s2(params.s2),
+          s1Tile(params.s1Tile),
+          s2Tile(params.s2Tile),
+          batch(params.batch == 0 ? 1U : params.batch)
     {
         if (batch > kMaxBatch) {
             batch = 1;
         }
         for (uint32_t i = 0; i <= batch; ++i) {
-            cuQ_[i] = tiling->cuSeqlensQ[i];
-            cuK_[i] = tiling->cuSeqlensK[i];
+            cuQ_[i] = params.cuQ[i];
+            cuK_[i] = params.cuK[i];
         }
         if (batch == 1 && cuQ_[1] == 0 && cuK_[1] == 0) {
             cuQ_[0] = 0;

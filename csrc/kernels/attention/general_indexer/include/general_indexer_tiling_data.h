@@ -15,14 +15,7 @@
 #include <cstdint>
 
 #include "catlass/detail/macros.hpp"
-
-namespace GeneralIndexerAlign {
-template <class T, class U>
-CATLASS_HOST_DEVICE constexpr uint32_t AlignUp(const T& value, const U& alignment)
-{
-    return static_cast<uint32_t>((value + alignment - 1) / alignment * alignment);
-}
-} // namespace GeneralIndexerAlign
+#include "sparse_indexer_align.hpp"
 
 /**
  * @brief Device-visible tiling for the general indexer.
@@ -32,7 +25,7 @@ CATLASS_HOST_DEVICE constexpr uint32_t AlignUp(const T& value, const U& alignmen
  * passed explicitly to the kernel entry and are never cached in tiling data.
  */
 struct GeneralIndexerTilingData {
-    static constexpr uint32_t kMaxBatch = 16;
+    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
 
     uint32_t s1{0};
     uint32_t n1{0};

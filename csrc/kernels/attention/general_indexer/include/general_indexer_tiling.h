@@ -20,6 +20,7 @@
 #include <acl/acl.h>
 
 #include "general_indexer_tiling_data.h"
+#include "sparse_indexer_align.hpp"
 
 namespace GeneralIndexerTiling {
 
@@ -196,11 +197,11 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
     constexpr uint32_t cubeFractalM = 16;
     constexpr uint32_t l0cFractalN = 16;
     constexpr uint32_t splitNAlign = l0cFractalN * aivPerAic;
-    const uint32_t wStride = GeneralIndexerAlign::AlignUp(params.n1, 32 / wElemBytes);
+    const uint32_t wStride = SparseIndexer::Common::AlignUp(params.n1, 32 / wElemBytes);
     // Keep s2Tile cube-fractal aligned (may exceed s2); actualK is clamped by the scheduler.
     const uint32_t s2Tile =
-        params.s2 <= kS2TileCap ? GeneralIndexerAlign::AlignUp(params.s2, cubeFractalN) : GeneralIndexerAlign::AlignUp(kS2TileCap, cubeFractalN);
-    const uint32_t s2Split = GeneralIndexerAlign::AlignUp(s2Tile, splitNAlign);
+        params.s2 <= kS2TileCap ? SparseIndexer::Common::AlignUp(params.s2, cubeFractalN) : SparseIndexer::Common::AlignUp(kS2TileCap, cubeFractalN);
+    const uint32_t s2Split = SparseIndexer::Common::AlignUp(s2Tile, splitNAlign);
     const uint64_t ubBytesPerS1 = sizeof(float) * (s2Split / aivPerAic) * (params.n1 + 1) +
                                   (sizeof(float) + wElemBytes) * wStride + sizeof(float) + 32 +
                                   256;
@@ -208,7 +209,7 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
     tilingData.s2Tile = s2Tile;
     // Capacity may exceed params.s1 so Reduce can pad actualS1 to 8 (D1).
     uint32_t s1Tile = static_cast<uint32_t>(kUbSize / ubBytesPerS1);
-    while (s1Tile > 0 && GeneralIndexerAlign::AlignUp(s1Tile * params.n1, cubeFractalM) > l0cRows) {
+    while (s1Tile > 0 && SparseIndexer::Common::AlignUp(s1Tile * params.n1, cubeFractalM) > l0cRows) {
         --s1Tile;
     }
     // BlockReduceHead pads actualS1 to FP32 block (8) for UB DataCopy/Cast/Relu.
@@ -218,7 +219,7 @@ inline void GetTiling(const Params& params, GeneralIndexerTilingData& tilingData
         s1Tile = s1Tile / kS1Align * kS1Align;
     } else if (
         s1Tile > 0 && kS1Align * ubBytesPerS1 <= kUbSize &&
-        GeneralIndexerAlign::AlignUp(kS1Align * params.n1, cubeFractalM) <= l0cRows) {
+        SparseIndexer::Common::AlignUp(kS1Align * params.n1, cubeFractalM) <= l0cRows) {
         s1Tile = kS1Align;
     }
     tilingData.s1Tile = s1Tile;

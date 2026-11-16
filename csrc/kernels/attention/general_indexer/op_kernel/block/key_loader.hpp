@@ -11,7 +11,7 @@
 #include "catlass/matrix_coord.hpp"
 #include "kernel_operator.h"
 
-#include "general_indexer_tiling_data.h"
+#include "sparse_indexer_align.hpp"
 
 namespace GeneralIndexer::Block {
 
@@ -22,6 +22,11 @@ namespace GeneralIndexer::Block {
 template <class ArchTag_, class BType_>
 class ContiguousKeyLoader {
 public:
+    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
+
+    struct Params {};
+
+    static constexpr bool kPaged = false;
     using ArchTag = ArchTag_;
     using BType = BType_;
     using DtypeB = typename BType::Element;
@@ -34,7 +39,7 @@ public:
     CATLASS_DEVICE
     void Setup(
         AscendC::GlobalTensor<DtypeB> const& gmB, LayoutB const& layoutB,
-        __gm__ GeneralIndexerTilingData const* /*tiling*/,
+        Params const& /*params*/,
         AscendC::GlobalTensor<int32_t> const& /*gmTable*/,
         AscendC::GlobalTensor<DtypeB> const& /*gmZero*/)
     {
@@ -75,13 +80,23 @@ private:
 template <class ArchTag_, class BType_>
 class PagedKeyLoader {
 public:
+    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
+
+    struct Params {
+        uint32_t d{0};
+        uint32_t blockSize{0};
+        uint32_t maxBlocksPerBatch{0};
+        uint32_t numPages{0};
+        uint32_t batch{1};
+        int32_t cuK[kMaxBatch + 1]{0};
+    };
+
+    static constexpr bool kPaged = true;
     using ArchTag = ArchTag_;
     using BType = BType_;
     using DtypeB = typename BType::Element;
     using LayoutB = typename BType::Layout;
     using CopyGmToL1B = Catlass::Gemm::Tile::CopyGmToL1DynamicOptimized<ArchTag, BType>;
-
-    static constexpr uint32_t kMaxBatch = GeneralIndexerTilingData::kMaxBatch;
 
     CATLASS_DEVICE
     PagedKeyLoader() = default;
@@ -89,20 +104,20 @@ public:
     CATLASS_DEVICE
     void Setup(
         AscendC::GlobalTensor<DtypeB> const& gmPages, LayoutB const& /*layoutB*/,
-        __gm__ GeneralIndexerTilingData const* tiling,
+        Params const& params,
         AscendC::GlobalTensor<int32_t> const& gmTable,
         AscendC::GlobalTensor<DtypeB> const& gmZero)
     {
         gmPages_ = gmPages;
-        blockSize_ = tiling->blockSize;
-        maxBlocks_ = tiling->maxBlocksPerBatch;
-        numPages_ = tiling->numPages;
-        d_ = tiling->d;
-        batch_ = tiling->batch == 0 ? 1U : tiling->batch;
+        blockSize_ = params.blockSize;
+        maxBlocks_ = params.maxBlocksPerBatch;
+        numPages_ = params.numPages;
+        d_ = params.d;
+        batch_ = params.batch == 0 ? 1U : params.batch;
         gmTable_ = gmTable;
         gmZero_ = gmZero;
         for (uint32_t i = 0; i <= batch_ && i <= kMaxBatch; ++i) {
-            cuK_[i] = tiling->cuSeqlensK[i];
+            cuK_[i] = params.cuK[i];
         }
     }
 

@@ -85,6 +85,8 @@ IMPLEMENTATION = AscendCImplementation(
         op_type="FiGeneralIndexer",
         tiling="FiGeneralIndexerTiling",
         includes=("op_kernel", "op_host", "include"),
+        shared_native_roots=("csrc/kernels/sparse_indexer/common/include",),
+        shared_includes=("csrc/kernels/sparse_indexer/common/include",),
         implementation="catlass",
         dependencies=(BuildDependency(name="catlass", revision=CATLASS_REVISION),),
         definitions=("CATLASS_ARCH=3510",),

@@ -26,8 +26,8 @@
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"
 
-#include "general_indexer_tiling_data.h"
 #include "key_loader.hpp"
+#include "sparse_indexer_align.hpp"
 
 namespace GeneralIndexer::Block {
 
@@ -35,6 +35,12 @@ template <class DtypeA_, class DtypeB_, class KeyLoader_ = ContiguousKeyLoader<C
                                                    Catlass::Gemm::GemmType<DtypeB_, Catlass::layout::ColumnMajor>>>
 class BlockMmad {
 public:
+    using KeyLoaderParams = typename KeyLoader_::Params;
+
+    struct Params {
+        KeyLoaderParams keyLoader{};
+    };
+
     using DtypeA = DtypeA_;
     using DtypeB = DtypeB_;
     using KeyLoader = KeyLoader_;
@@ -71,14 +77,14 @@ public:
         AscendC::LocalTensor<DtypeC> const& ubC, AscendC::GlobalTensor<DtypeA> const& gmQ,
         AscendC::GlobalTensor<DtypeB> const& gmK, Catlass::GemmCoord const& problemShape,
         Catlass::GemmCoord const& tileShape, Catlass::Arch::Resource<ArchTag>& resource,
-        __gm__ GeneralIndexerTilingData const* tiling,
+        Params const& params,
         AscendC::GlobalTensor<int32_t> const& gmTable,
         AscendC::GlobalTensor<DtypeB> const& gmZero)
         : problemShape_(problemShape), tileShape_(tileShape), resource_(resource), gmA_(gmQ), gmB_(gmK), ubC_(ubC)
     {
         layoutA_ = LayoutA::template MakeLayout<DtypeA>(problemShape_.m(), problemShape_.k());
         layoutB_ = LayoutB::template MakeLayout<DtypeB>(problemShape_.k(), problemShape_.n());
-        keyLoader_.Setup(gmB_, layoutB_, tiling, gmTable, gmZero);
+        keyLoader_.Setup(gmB_, layoutB_, params.keyLoader, gmTable, gmZero);
 
         uint32_t kByA = ArchTag::L0A_SIZE / sizeof(DtypeA) / tileShape_.m();
         uint32_t kByB = ArchTag::L0B_SIZE / sizeof(DtypeB) / tileShape_.n();
@@ -109,8 +115,8 @@ public:
     void operator()(uint32_t mStart, uint32_t actualM, uint32_t nStart, uint32_t actualN, uint32_t batchIdx)
     {
         uint32_t kTileCount = CeilDiv(problemShape_.k(), kPart_);
-        uint32_t alignedM = GeneralIndexerAlign::AlignUp(actualM, L1AAlign::M_ALIGNED);
-        uint32_t alignedN = GeneralIndexerAlign::AlignUp(actualN, L1BAlign::N_ALIGNED);
+        uint32_t alignedM = SparseIndexer::Common::AlignUp(actualM, L1AAlign::M_ALIGNED);
+        uint32_t alignedN = SparseIndexer::Common::AlignUp(actualN, L1BAlign::N_ALIGNED);
         auto layoutAInL1 = Catlass::layout::zN::template MakeLayout<DtypeA>(alignedM, kPart_);
         auto layoutBInL1 = Catlass::layout::nZ::template MakeLayout<DtypeB>(kPart_, alignedN);
 
@@ -141,7 +147,7 @@ public:
         constexpr uint32_t aivPerAic = 2;
         constexpr uint32_t l0cFractalN = 16;
         uint32_t splitNAlign = l0cFractalN * aivPerAic;
-        uint32_t splitN = GeneralIndexerAlign::AlignUp(actualN, splitNAlign);
+        uint32_t splitN = SparseIndexer::Common::AlignUp(actualN, splitNAlign);
         auto tensorL0C = tla::MakeTensor(l0C_, tla::MakeLayoutL0C(actualM, splitN), Catlass::Arch::PositionL0C{});
         auto tensorUbC = tla::MakeTensor(
             ubC_,

@@ -19,8 +19,8 @@
 #include "catlass/catlass.hpp"
 #include "kernel_operator.h"
 
-#include "general_indexer_tiling_data.h"
 #include "mask_utils.hpp"
+#include "sparse_indexer_align.hpp"
 
 namespace GeneralIndexer::Block {
 
@@ -57,6 +57,23 @@ template <
     class Store_ = DirectWorkspaceStore<DtypeDst_, DtypeScore_>>
 class BlockReduceHead {
 public:
+    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
+
+    struct Params {
+        uint32_t n1{0};
+        uint32_t s2{0};
+        uint32_t s1Tile{0};
+        uint32_t s2Tile{0};
+        int32_t maskMode{0};
+        int32_t cmpRatio{1};
+        uint32_t hasSequsedQ{0};
+        uint32_t hasSequsedK{0};
+        int32_t sequsedQ[kMaxBatch]{0};
+        int32_t sequsedK[kMaxBatch]{0};
+        int32_t cuK[kMaxBatch + 1]{0};
+        int32_t residual[kMaxBatch]{0};
+    };
+
     using DtypeScore = DtypeScore_;
     using DtypeW = DtypeW_;
     using DtypeDst = DtypeDst_;
@@ -72,23 +89,23 @@ public:
     CATLASS_DEVICE
     BlockReduceHead(
         AscendC::LocalTensor<DtypeScore>& ubScore, Catlass::Arch::Resource<ArchTag>& resource,
-        AscendC::GlobalTensor<DtypeW> const& gmW, AscendC::GlobalTensor<DtypeDst> const& gmDst, uint32_t n1,
-        uint32_t s2, uint32_t s1Tile, uint32_t s2Tile, __gm__ GeneralIndexerTilingData const* tiling = nullptr)
+        AscendC::GlobalTensor<DtypeW> const& gmW, AscendC::GlobalTensor<DtypeDst> const& gmDst,
+        Params const& params)
         : ubScore_(ubScore),
           gmW_(gmW),
           gmDst_(gmDst),
-          tiling_(tiling),
-          n1_(n1),
-          s2_(s2),
-          s1Tile_(s1Tile),
-          s2Tile_(s2Tile)
+          params_(params),
+          n1_(params.n1),
+          s2_(params.s2),
+          s1Tile_(params.s1Tile),
+          s2Tile_(params.s2Tile)
     {
         constexpr uint32_t kWAlign = Catlass::BYTE_PER_BLK / sizeof(DtypeW);
         wStride_ = (n1_ + kWAlign - 1) / kWAlign * kWAlign;
         uint32_t aivPerAic = AscendC::GetSubBlockNum();
         constexpr uint32_t l0cFractalN = 16;
         uint32_t splitNAlign = l0cFractalN * aivPerAic;
-        uint32_t colPerAiv = GeneralIndexerAlign::AlignUp(s2Tile_, splitNAlign) / aivPerAic;
+        uint32_t colPerAiv = SparseIndexer::Common::AlignUp(s2Tile_, splitNAlign) / aivPerAic;
         uint32_t offset = s1Tile_ * n1_ * colPerAiv * sizeof(DtypeScore);
         ubOut_ = resource.ubBuf.template GetBufferByByte<DtypeScore>(offset);
         offset += s1Tile_ * colPerAiv * sizeof(DtypeScore);
@@ -195,25 +212,22 @@ public:
         uint32_t actualS1, uint32_t cols, uint32_t colPerAiv, uint32_t colBegin, uint32_t s2Start, uint32_t batchIdx,
         uint32_t localQStart)
     {
-        if (tiling_ == nullptr) {
-            return;
-        }
-        const int32_t maskMode = tiling_->maskMode;
-        const bool needMask = maskMode == 3 || tiling_->hasSequsedQ != 0 || tiling_->hasSequsedK != 0;
+        const int32_t maskMode = params_.maskMode;
+        const bool needMask = maskMode == 3 || params_.hasSequsedQ != 0 || params_.hasSequsedK != 0;
         if (!needMask) {
             return;
         }
 
-        const uint32_t qAct = static_cast<uint32_t>(tiling_->sequsedQ[batchIdx]);
-        const uint32_t kAct = static_cast<uint32_t>(tiling_->sequsedK[batchIdx]);
-        const uint32_t reqKStart = static_cast<uint32_t>(tiling_->cuSeqlensK[batchIdx]);
-        const int32_t residual = tiling_->cmpResidualK[batchIdx];
-        const int32_t cmpRatio = tiling_->cmpRatio;
+        const uint32_t qAct = static_cast<uint32_t>(params_.sequsedQ[batchIdx]);
+        const uint32_t kAct = static_cast<uint32_t>(params_.sequsedK[batchIdx]);
+        const uint32_t reqKStart = static_cast<uint32_t>(params_.cuK[batchIdx]);
+        const int32_t residual = params_.residual[batchIdx];
+        const int32_t cmpRatio = params_.cmpRatio;
         const uint32_t kBase = s2Start + colBegin - reqKStart;
 
         static_assert(sizeof(DtypeScore) == sizeof(uint32_t), "mask VF assumes FP32 scores");
         // calcLen is 32B-aligned and within the row stride (colPerAiv is splitN-aligned).
-        uint32_t calcLen = GeneralIndexerAlign::AlignUp(cols, kFloatBlock);
+        uint32_t calcLen = SparseIndexer::Common::AlignUp(cols, kFloatBlock);
         if (calcLen > colPerAiv) {
             calcLen = colPerAiv;
         }
@@ -259,7 +273,7 @@ public:
         uint32_t aivPerAic = AscendC::GetSubBlockNum();
         constexpr uint32_t l0cFractalN = 16;
         uint32_t splitNAlign = l0cFractalN * aivPerAic;
-        uint32_t alignedN = GeneralIndexerAlign::AlignUp(actualS2, splitNAlign);
+        uint32_t alignedN = SparseIndexer::Common::AlignUp(actualS2, splitNAlign);
         uint32_t colPerAiv = alignedN / aivPerAic;
         uint32_t colBegin = AscendC::GetSubBlockIdx() * colPerAiv;
         if (colBegin >= actualS2) {
@@ -269,7 +283,7 @@ public:
 
         // D1: UB DataCopy / Cast / Relu need 32B (often 256B) aligned element counts.
         // Pad S1 to FP32 block (8); only actualS1 rows are scaled / stored.
-        uint32_t alignedS1 = GeneralIndexerAlign::AlignUp(actualS1, kFloatBlock);
+        uint32_t alignedS1 = SparseIndexer::Common::AlignUp(actualS1, kFloatBlock);
         if (alignedS1 > s1Tile_) {
             alignedS1 = s1Tile_;
         }
@@ -313,7 +327,7 @@ private:
     AscendC::LocalTensor<DtypeScore> ubTmp_;
     AscendC::GlobalTensor<DtypeW> const& gmW_;
     AscendC::GlobalTensor<DtypeDst> const& gmDst_;
-    __gm__ GeneralIndexerTilingData const* tiling_{nullptr};
+    Params params_{};
     uint32_t n1_{0};
     uint32_t s2_{0};
     uint32_t s1Tile_{0};

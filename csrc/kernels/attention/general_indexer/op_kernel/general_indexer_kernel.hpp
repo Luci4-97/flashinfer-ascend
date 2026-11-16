@@ -42,6 +42,75 @@ class GeneralIndexerKernel {
     using DtypeW = typename BlockReduceHead::DtypeW;
     using DtypeS = typename BlockTopK::DtypeS;
     using DtypeOut = typename BlockTopK::DtypeOut;
+    using KeyLoader = typename BlockMmad::KeyLoader;
+    using KeyLoaderParams = typename KeyLoader::Params;
+
+    CATLASS_DEVICE static typename BlockScheduler::Params MakeSchedulerParams(
+        __gm__ GeneralIndexerTilingData const* tiling)
+    {
+        typename BlockScheduler::Params params{};
+        params.s1 = tiling->s1;
+        params.s2 = tiling->s2;
+        params.s1Tile = tiling->s1Tile;
+        params.s2Tile = tiling->s2Tile;
+        params.batch = tiling->batch == 0 ? 1U : tiling->batch;
+        for (uint32_t i = 0; i <= BlockScheduler::kMaxBatch; ++i) {
+            params.cuQ[i] = tiling->cuSeqlensQ[i];
+            params.cuK[i] = tiling->cuSeqlensK[i];
+        }
+        return params;
+    }
+
+    CATLASS_DEVICE static KeyLoaderParams MakeKeyLoaderParams(
+        __gm__ GeneralIndexerTilingData const* tiling)
+    {
+        KeyLoaderParams params{};
+        if constexpr (KeyLoader::kPaged) {
+            params.d = tiling->d;
+            params.blockSize = tiling->blockSize;
+            params.maxBlocksPerBatch = tiling->maxBlocksPerBatch;
+            params.numPages = tiling->numPages;
+            params.batch = tiling->batch == 0 ? 1U : tiling->batch;
+            for (uint32_t i = 0; i <= KeyLoader::kMaxBatch; ++i) {
+                params.cuK[i] = tiling->cuSeqlensK[i];
+            }
+        }
+        return params;
+    }
+
+    CATLASS_DEVICE static typename BlockReduceHead::Params MakeReduceParams(
+        __gm__ GeneralIndexerTilingData const* tiling)
+    {
+        typename BlockReduceHead::Params params{};
+        params.n1 = tiling->n1;
+        params.s2 = tiling->s2;
+        params.s1Tile = tiling->s1Tile;
+        params.s2Tile = tiling->s2Tile;
+        params.maskMode = tiling->maskMode;
+        params.cmpRatio = tiling->cmpRatio;
+        params.hasSequsedQ = tiling->hasSequsedQ;
+        params.hasSequsedK = tiling->hasSequsedK;
+        for (uint32_t i = 0; i < BlockReduceHead::kMaxBatch; ++i) {
+            params.sequsedQ[i] = tiling->sequsedQ[i];
+            params.sequsedK[i] = tiling->sequsedK[i];
+            params.residual[i] = tiling->cmpResidualK[i];
+        }
+        for (uint32_t i = 0; i <= BlockReduceHead::kMaxBatch; ++i) {
+            params.cuK[i] = tiling->cuSeqlensK[i];
+        }
+        return params;
+    }
+
+    CATLASS_DEVICE static typename BlockTopK::Params MakeTopKParams(
+        __gm__ GeneralIndexerTilingData const* tiling)
+    {
+        typename BlockTopK::Params params{};
+        params.topK = tiling->k;
+        params.s2Stride = tiling->s2;
+        params.s2Tile = tiling->s2Tile;
+        params.hasOutputIdxOffset = tiling->hasOutputIdxOffset != 0;
+        return params;
+    }
 
 public:
     CATLASS_DEVICE
@@ -57,7 +126,8 @@ public:
         AscendC::GlobalTensor<DtypeK> const& gmZeroPage,
         AscendC::GlobalTensor<int32_t> const& gmOutputIdxOffset)
     {
-        BlockScheduler blockScheduler(tiling);
+        typename BlockScheduler::Params schedulerParams = MakeSchedulerParams(tiling);
+        BlockScheduler blockScheduler(schedulerParams);
 
         uint32_t qStart = 0;
         uint32_t actualQ = 0;
@@ -66,11 +136,12 @@ public:
         uint32_t batchIdx = 0;
         uint32_t localQStart = 0;
         if ASCEND_IS_AIC {
+            typename BlockMmad::Params mmadParams{MakeKeyLoaderParams(tiling)};
             BlockMmad blockMmad(
                 ubC_, gmQ, gmK, Catlass::GemmCoord(tiling->s1 * tiling->n1, tiling->s2, tiling->d),
                 Catlass::GemmCoord(
-                    GeneralIndexerAlign::AlignUp(tiling->s1Tile * tiling->n1, Catlass::C0_NUM_PER_FRACTAL), tiling->s2Tile, tiling->d),
-                resource_, tiling, gmBlockTable, gmZeroPage);
+                    SparseIndexer::Common::AlignUp(tiling->s1Tile * tiling->n1, Catlass::C0_NUM_PER_FRACTAL), tiling->s2Tile, tiling->d),
+                resource_, mmadParams, gmBlockTable, gmZeroPage);
             while (blockScheduler.GetNextCoord(qStart, actualQ, kStart, actualK, batchIdx, localQStart)) {
                 asc_sync_block_wait(PIPE_FIX, FLAG_VEC_TO_CUBE);
                 blockMmad(qStart * tiling->n1, actualQ * tiling->n1, kStart, actualK, batchIdx);
@@ -78,8 +149,8 @@ public:
             }
             asc_sync_block_wait(PIPE_FIX, FLAG_VEC_TO_CUBE);
         } else {
-            BlockReduceHead blockReduceHead(
-                ubC_, resource_, gmW, scores, tiling->n1, tiling->s2, tiling->s1Tile, tiling->s2Tile, tiling);
+            typename BlockReduceHead::Params reduceParams = MakeReduceParams(tiling);
+            BlockReduceHead blockReduceHead(ubC_, resource_, gmW, scores, reduceParams);
             asc_sync_block_arrive(PIPE_MTE3, FLAG_VEC_TO_CUBE);
             while (blockScheduler.GetNextCoord(qStart, actualQ, kStart, actualK, batchIdx, localQStart)) {
                 asc_sync_block_wait(PIPE_V, FLAG_CUBE_TO_VEC);
@@ -90,9 +161,8 @@ public:
 
         AscendC::SyncAll<false>();
         if ASCEND_IS_AIV {
-            BlockTopK blockTopK(
-                resource_, scores, outIndices, tiling->k, tiling->s2, tiling->s2Tile, gmOutputIdxOffset,
-                tiling->hasOutputIdxOffset != 0, outValues);
+            typename BlockTopK::Params topkParams = MakeTopKParams(tiling);
+            BlockTopK blockTopK(resource_, scores, outIndices, topkParams, gmOutputIdxOffset, outValues);
             while (blockScheduler.GetNextTopKCoord(qStart, actualQ, kStart, actualK)) {
                 blockTopK(qStart, actualQ, kStart, actualK);
             }

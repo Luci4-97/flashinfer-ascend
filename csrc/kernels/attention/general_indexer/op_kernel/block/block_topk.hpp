@@ -12,6 +12,7 @@
 #include "kernel_operator.h"
 
 #include "mask_utils.hpp"
+#include "sparse_indexer_align.hpp"
 
 namespace GeneralIndexer::Block {
 
@@ -266,6 +267,13 @@ CATLASS_DEVICE void SegmentTopKOnRow(AscendC::LocalTensor<float>& scoreUb,
 template <class DtypeScore_, class DtypeOut_>
 class BlockTopK {
 public:
+    struct Params {
+        uint32_t topK{0};
+        uint32_t s2Stride{0};
+        uint32_t s2Tile{0};
+        bool hasOutputIdxOffset{false};
+    };
+
     using DtypeScore = DtypeScore_;
     using DtypeOut = DtypeOut_;
     using DtypeS = DtypeScore_;
@@ -276,21 +284,20 @@ public:
 
     CATLASS_DEVICE BlockTopK(Catlass::Arch::Resource<ArchTag>& resource,
         AscendC::GlobalTensor<DtypeScore> const& workspace, AscendC::GlobalTensor<DtypeOut> const& outIndices,
-        uint32_t topK, uint32_t s2Stride, uint32_t s2Tile,
-        AscendC::GlobalTensor<int32_t> const& outputIdxOffset, bool hasOutputIdxOffset,
+        Params const& params, AscendC::GlobalTensor<int32_t> const& outputIdxOffset,
         AscendC::GlobalTensor<DtypeScore> const& outValues)
         : gmScores_(workspace),
           gmOut_(outIndices),
           gmValues_(outValues),
           gmOutputIdxOffset_(outputIdxOffset),
-          topK_(topK),
-          s2Stride_(s2Stride),
-          s2Tile_(s2Tile),
-          hasOutputIdxOffset_(hasOutputIdxOffset),
-          tileColAlign_(GeneralIndexerAlign::AlignUp(s2Tile_, kFloatBlock))
+          topK_(params.topK),
+          s2Stride_(params.s2Stride),
+          s2Tile_(params.s2Tile),
+          hasOutputIdxOffset_(params.hasOutputIdxOffset),
+          tileColAlign_(SparseIndexer::Common::AlignUp(params.s2Tile, kFloatBlock))
     {
-        const uint32_t kTopAlign = GeneralIndexerAlign::AlignUp(topK, 256u);
-        const uint32_t kMergeAlign = GeneralIndexerAlign::AlignUp(topK * 2U, 256u);
+        const uint32_t kTopAlign = SparseIndexer::Common::AlignUp(params.topK, 256u);
+        const uint32_t kMergeAlign = SparseIndexer::Common::AlignUp(params.topK * 2U, 256u);
         uint32_t offset = 0;
         scoreUb_ = resource.ubBuf.template GetBufferByByte<DtypeScore>(offset);
         offset += tileColAlign_ * sizeof(DtypeScore);
@@ -338,7 +345,7 @@ public:
                 const uint32_t localStart = s2Block * s2Tile_;
                 const uint32_t actualS2 =
                     (s2Block == s2Dim - 1U) ? (kLen - localStart) : s2Tile_;
-                const uint32_t ubColAlign = GeneralIndexerAlign::AlignUp(actualS2, kFloatBlock);
+                const uint32_t ubColAlign = SparseIndexer::Common::AlignUp(actualS2, kFloatBlock);
                 const uint32_t rightPadCols = ubColAlign - actualS2;
                 const uint32_t idxOffset = kStart + localStart;
 
