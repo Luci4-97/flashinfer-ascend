@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass
 
-from flashinfer.runtime import CapabilitySpec, SchemaError
-from flashinfer.operators.implementation import ImplementationDefinition
 from flashinfer.operators.author_api import Support
+from flashinfer.operators.implementation import ImplementationDefinition
+from flashinfer.runtime import CapabilitySpec, SchemaError
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,8 @@ class BuildConfig:
     op_type: str
     tiling: str
     includes: tuple = ("op_kernel", "op_host")
+    shared_native_roots: tuple = ()
+    shared_includes: tuple = ()
     cmake: object = None
     implementation: str = "native"
     dependencies: tuple = ()
@@ -196,6 +198,7 @@ class AscendCImplementation(ImplementationDefinition):
 
     def prepare_outputs(self, root):
         from pathlib import Path
+
         from flashinfer.ascendc.authoring import prepare_native
 
         directory = (

@@ -3,16 +3,16 @@
 import hashlib
 from pathlib import Path
 
-from flashinfer.jit.recipe import BuildRecipe, _path
 from flashinfer.jit.op_package import package_target
+from flashinfer.jit.recipe import BuildRecipe, _path
 from flashinfer.runtime import (
     Backend,
     CompileMode,
     KernelDescriptor,
     KernelLaunchABI,
+    SchemaError,
     SourceRef,
     WorkspaceFormula,
-    SchemaError,
 )
 from flashinfer.runtime.manifest import descriptor_from_dict
 
@@ -27,6 +27,38 @@ def prepare_native(root, directory, native):
     ):
         raise SchemaError("native source must be an in-repository regular directory")
     build = native.build
+
+    shared_roots = []
+    for value in build.shared_native_roots:
+        try:
+            relative = _path(value)
+        except SchemaError as error:
+            raise SchemaError("shared native root is not a safe repository path: " + str(value)) from error
+        path = root / relative
+        if (
+            path.is_symlink()
+            or not path.resolve().is_relative_to(root)
+            or not path.is_dir()
+        ):
+            raise SchemaError("shared native root must be an in-repository regular directory: " + str(value))
+        shared_roots.append(path)
+
+    shared_include_dirs = []
+    for value in build.shared_includes:
+        try:
+            relative = _path(value)
+        except SchemaError as error:
+            raise SchemaError("shared include is not a safe repository path: " + str(value)) from error
+        path = root / relative
+        if (
+            path.is_symlink()
+            or not path.resolve().is_relative_to(root)
+            or not path.is_dir()
+        ):
+            raise SchemaError("shared include must be an in-repository regular directory: " + str(value))
+        if not any(path.resolve().is_relative_to(item.resolve()) for item in shared_roots):
+            raise SchemaError("shared include must be inside a declared shared native root: " + str(value))
+        shared_include_dirs.append(path)
 
     def reference(path, language="ascendc"):
         path = Path(path)
@@ -53,18 +85,30 @@ def prepare_native(root, directory, native):
     source = reference(local(build.device))
     host = tuple(reference(local(p)) for p in build.host)
     selected = {source.locator} | {p.locator for p in host}
-    native_files = [
-        p
+    native_files = {
+        p.resolve(): p
         for p in sorted(source_dir.rglob("*"))
-        if p.is_file() and p.suffix in {".cpp", ".h", ".inc"}
-    ]
+        if p.is_file() and p.suffix in {".cpp", ".h", ".inc", ".hpp"}
+    }
+    shared_files = {}
+    for shared_root in shared_roots:
+        for path in sorted(shared_root.rglob("*")):
+            if not path.is_file():
+                continue
+            if path.suffix == ".cpp":
+                raise SchemaError(
+                    "shared native roots currently support headers only; declare translation units in the operator directory: "
+                    + path.relative_to(root).as_posix()
+                )
+            shared_files[path.resolve()] = path
     headers = tuple(
-        reference(p)
-        for p in native_files
-        if p.relative_to(root).as_posix() not in selected
+        reference(path)
+        for resolved, path in {**native_files, **shared_files}.items()
+        if path.relative_to(root).as_posix() not in selected
+        and path.suffix in {".h", ".hpp", ".inc"}
     )
     extra = []
-    native_paths = {p.resolve() for p in native_files}
+    native_paths = set(native_files) | set(shared_files)
     for path in sorted(source_dir.rglob("*")):
         if (
             not path.is_file()
@@ -105,8 +149,9 @@ def prepare_native(root, directory, native):
         source=source,
         sources=(source,),
         headers=headers,
-        include_dirs=tuple(
-            local(p).relative_to(root).as_posix() for p in build.includes
+        include_dirs=(
+            tuple(local(p).relative_to(root).as_posix() for p in build.includes)
+            + tuple(path.relative_to(root).as_posix() for path in shared_include_dirs)
         ),
         dependencies=build.dependencies,
         definitions=build.definitions,
