@@ -32,10 +32,35 @@ def test_kernel_entry_is_the_only_tiling_to_params_adapter():
 
 
 def test_common_alignment_is_not_owned_by_general_indexer_tiling():
-    align = COMMON / "include/sparse_indexer_align.hpp"
-    assert align.is_file()
-    assert "SparseIndexer::Common" in align.read_text()
+    common_header = COMMON / "include/sparse_indexer_common.hpp"
+    assert common_header.is_file()
+    assert "SparseIndexer::Common" in common_header.read_text()
     for path in BLOCK.glob("*.hpp"):
         text = path.read_text()
         assert "namespace GeneralIndexerAlign" not in text, path
         assert "GeneralIndexerAlign::" not in text, path
+        assert "GENERAL_INDEXER" not in text, path
+
+
+def test_general_indexer_uses_arch35_entry_layout_without_dead_entries():
+    op_kernel = ROOT / "csrc/kernels/sparse_indexer/general_indexer/op_kernel"
+    arch = op_kernel / "arch35"
+    assert not (op_kernel / "general_indexer.hpp").exists()
+    assert not (op_kernel / "general_indexer_kernel.hpp").exists()
+    assert not (arch / "general_indexer_arch35.h").exists()
+    assert (arch / "general_indexer.h").is_file()
+    assert (arch / "general_indexer_kernel.h").is_file()
+    entry = (op_kernel / "general_indexer.cpp").read_text()
+    assert '#include "arch35/general_indexer.h"' in entry
+    assert "block/key_loader.hpp" not in entry
+    for path in op_kernel.rglob("*"):
+        if path.is_file() and path.suffix in {".cpp", ".h", ".hpp"}:
+            assert "GeneralIndexerEntry" not in path.read_text(), path
+
+
+def test_general_indexer_host_sources_are_split_by_responsibility():
+    op_host = ROOT / "csrc/kernels/sparse_indexer/general_indexer/op_host"
+    assert (op_host / "general_indexer_def.cpp").is_file()
+    assert (op_host / "general_indexer_infershape.cpp").is_file()
+    assert (op_host / "arch35/general_indexer_tiling.cpp").is_file()
+    assert not (op_host / "general_indexer.cpp").exists()
