@@ -105,7 +105,6 @@ def prepare_native(root, directory, native):
         reference(path)
         for resolved, path in {**native_files, **shared_files}.items()
         if path.relative_to(root).as_posix() not in selected
-        and path.suffix in {".h", ".hpp", ".inc"}
     )
     extra = []
     native_paths = set(native_files) | set(shared_files)

@@ -10,6 +10,7 @@ from flashinfer.ascendc.definition import BuildConfig
 from flashinfer.ascendc.sparse_indexer.general_indexer.implementation import (
     IMPLEMENTATION,
 )
+from flashinfer.ascendc.attention.sparse_flash_attention.implementation import IMPLEMENTATIONS
 from flashinfer.runtime import SchemaError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,3 +48,12 @@ def test_prepare_native_rejects_unsafe_shared_roots(root):
     )
     with pytest.raises(SchemaError, match="shared native"):
         prepare_native(ROOT, ROOT / "flashinfer/ascendc/sparse_indexer/general_indexer", native)
+
+
+def test_textually_included_cpp_files_remain_in_native_header_closure():
+    prepared = IMPLEMENTATIONS[0].prepare_outputs(ROOT)
+    headers = {ref.locator for ref in prepared["recipe"].headers}
+    assert (
+        "csrc/kernels/attention/sparse_flash_attention/op_host/arch22/"
+        "sparse_flash_attention_tiling.cpp"
+    ) in headers
