@@ -66,12 +66,6 @@ public:
         uint32_t s2Tile{0};
         int32_t maskMode{0};
         int32_t cmpRatio{1};
-        uint32_t hasSequsedQ{0};
-        uint32_t hasSequsedK{0};
-        int32_t sequsedQ[kMaxBatch]{0};
-        int32_t sequsedK[kMaxBatch]{0};
-        int32_t cuK[kMaxBatch + 1]{0};
-        int32_t residual[kMaxBatch]{0};
     };
 
     using DtypeScore = DtypeScore_;
@@ -209,19 +203,14 @@ public:
      */
     CATLASS_DEVICE
     void ApplyMaskToUb(
-        uint32_t actualS1, uint32_t cols, uint32_t colPerAiv, uint32_t colBegin, uint32_t s2Start, uint32_t batchIdx,
-        uint32_t localQStart)
+        uint32_t actualS1, uint32_t cols, uint32_t colPerAiv, uint32_t colBegin, uint32_t s2Start,
+        uint32_t localQStart, uint32_t qAct, uint32_t kAct, uint32_t reqKStart, int32_t residual, bool maskActive)
     {
-        const int32_t maskMode = params_.maskMode;
-        const bool needMask = maskMode == 3 || params_.hasSequsedQ != 0 || params_.hasSequsedK != 0;
-        if (!needMask) {
+        if (!maskActive) {
             return;
         }
 
-        const uint32_t qAct = static_cast<uint32_t>(params_.sequsedQ[batchIdx]);
-        const uint32_t kAct = static_cast<uint32_t>(params_.sequsedK[batchIdx]);
-        const uint32_t reqKStart = static_cast<uint32_t>(params_.cuK[batchIdx]);
-        const int32_t residual = params_.residual[batchIdx];
+        const int32_t maskMode = params_.maskMode;
         const int32_t cmpRatio = params_.cmpRatio;
         const uint32_t kBase = s2Start + colBegin - reqKStart;
 
@@ -267,8 +256,8 @@ public:
 
     CATLASS_DEVICE
     void operator()(
-        uint32_t s1Start, uint32_t actualS1, uint32_t s2Start, uint32_t actualS2, uint32_t batchIdx = 0,
-        uint32_t localQStart = 0)
+        uint32_t s1Start, uint32_t actualS1, uint32_t s2Start, uint32_t actualS2, uint32_t localQStart,
+        uint32_t qAct, uint32_t kAct, uint32_t reqKStart, int32_t residual, bool maskActive)
     {
         uint32_t aivPerAic = AscendC::GetSubBlockNum();
         constexpr uint32_t l0cFractalN = 16;
@@ -313,7 +302,7 @@ public:
         for (uint32_t h = 0; h < n1_; ++h) {
             ScaleHead(h, actualS1, colPerAiv, cols, h == 0);
         }
-        ApplyMaskToUb(actualS1, cols, colPerAiv, colBegin, s2Start, batchIdx, localQStart);
+        ApplyMaskToUb(actualS1, cols, colPerAiv, colBegin, s2Start, localQStart, qAct, kAct, reqKStart, residual, maskActive);
         Store::StoreTile(gmDst_[s1Start * s2_ + s2Start + colBegin], ubOut_, actualS1, cols, colPerAiv, s2_);
     }
 

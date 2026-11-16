@@ -112,7 +112,7 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(uint32_t mStart, uint32_t actualM, uint32_t nStart, uint32_t actualN, uint32_t batchIdx)
+    void operator()(uint32_t mStart, uint32_t actualM, KeyCoord const& keyCoord, uint32_t actualN)
     {
         uint32_t kTileCount = CeilDiv(problemShape_.k(), kPart_);
         uint32_t alignedM = SparseIndexer::Common::AlignUp(actualM, L1AAlign::M_ALIGNED);
@@ -129,7 +129,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
             copyGmToL1A_(
                 l1A_, gmA_[offsetA], layoutAInL1, layoutA_.GetTileLayout(Catlass::MatrixCoord(actualM, actualK)));
-            keyLoader_.Load(l1B_, layoutBInL1, kStart, actualK, nStart, actualN, batchIdx);
+            keyLoader_.Load(l1B_, layoutBInL1, kStart, actualK, keyCoord, actualN);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);

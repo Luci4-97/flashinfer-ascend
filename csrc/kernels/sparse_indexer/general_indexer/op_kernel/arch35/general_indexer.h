@@ -22,6 +22,7 @@
 #include "kernel_operator.h"
 
 #include "general_indexer_kernel.h"
+#include "general_indexer_source.h"
 #include "block/block_scheduler.hpp"
 #include "block/block_mmad.hpp"
 #include "block/block_reduce_head.hpp"
@@ -30,7 +31,10 @@
 
 namespace GeneralIndexerKernelDetail {
 
-using BlockScheduler = SparseIndexer::Common::Block::BlockScheduler;
+using RequestSource = GeneralIndexerRequestSource;
+using KeyCoord = SparseIndexer::Common::Block::KeyCoord;
+using BlockScheduler = SparseIndexer::Common::Block::BlockScheduler<
+    RequestSource, SparseIndexer::Common::Block::RequestBlockDiagonalPolicy>;
 
 template <class InputType>
 using ContiguousKeyLoader = SparseIndexer::Common::Block::ContiguousKeyLoader<

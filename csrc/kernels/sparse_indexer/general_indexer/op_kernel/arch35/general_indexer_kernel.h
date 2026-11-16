@@ -18,8 +18,11 @@
 #include "catlass/matrix_coord.hpp"
 #include "kernel_operator.h"
 #include "c_api/sync/sync.h"
+#include "block/key_loader.hpp"
 
 #include "general_indexer_tiling_data.h"
+#include "general_indexer_source.h"
+#include "general_indexer_task.h"
 
 /**
  * out = TopK(Sum(ReLU(Q @ K^T) * W, dim=1), dim=-1)
@@ -49,15 +52,9 @@ class GeneralIndexerKernel {
         __gm__ GeneralIndexerTilingData const* tiling)
     {
         typename BlockScheduler::Params params{};
-        params.s1 = tiling->s1;
-        params.s2 = tiling->s2;
-        params.s1Tile = tiling->s1Tile;
-        params.s2Tile = tiling->s2Tile;
-        params.batch = tiling->batch == 0 ? 1U : tiling->batch;
-        for (uint32_t i = 0; i <= BlockScheduler::kMaxBatch; ++i) {
-            params.cuQ[i] = tiling->cuSeqlensQ[i];
-            params.cuK[i] = tiling->cuSeqlensK[i];
-        }
+        params.policy.s1Tile = tiling->s1Tile;
+        params.policy.s2Tile = tiling->s2Tile;
+        params.source.InitFromTiling(tiling);
         return params;
     }
 
@@ -70,10 +67,6 @@ class GeneralIndexerKernel {
             params.blockSize = tiling->blockSize;
             params.maxBlocksPerBatch = tiling->maxBlocksPerBatch;
             params.numPages = tiling->numPages;
-            params.batch = tiling->batch == 0 ? 1U : tiling->batch;
-            for (uint32_t i = 0; i <= KeyLoader::kMaxBatch; ++i) {
-                params.cuK[i] = tiling->cuSeqlensK[i];
-            }
         }
         return params;
     }
@@ -88,16 +81,6 @@ class GeneralIndexerKernel {
         params.s2Tile = tiling->s2Tile;
         params.maskMode = tiling->maskMode;
         params.cmpRatio = tiling->cmpRatio;
-        params.hasSequsedQ = tiling->hasSequsedQ;
-        params.hasSequsedK = tiling->hasSequsedK;
-        for (uint32_t i = 0; i < BlockReduceHead::kMaxBatch; ++i) {
-            params.sequsedQ[i] = tiling->sequsedQ[i];
-            params.sequsedK[i] = tiling->sequsedK[i];
-            params.residual[i] = tiling->cmpResidualK[i];
-        }
-        for (uint32_t i = 0; i <= BlockReduceHead::kMaxBatch; ++i) {
-            params.cuK[i] = tiling->cuSeqlensK[i];
-        }
         return params;
     }
 
@@ -129,12 +112,6 @@ public:
         typename BlockScheduler::Params schedulerParams = MakeSchedulerParams(tiling);
         BlockScheduler blockScheduler(schedulerParams);
 
-        uint32_t qStart = 0;
-        uint32_t actualQ = 0;
-        uint32_t kStart = 0;
-        uint32_t actualK = 0;
-        uint32_t batchIdx = 0;
-        uint32_t localQStart = 0;
         if ASCEND_IS_AIC {
             typename BlockMmad::Params mmadParams{MakeKeyLoaderParams(tiling)};
             BlockMmad blockMmad(
@@ -142,9 +119,13 @@ public:
                 Catlass::GemmCoord(
                     SparseIndexer::Common::AlignUp(tiling->s1Tile * tiling->n1, Catlass::C0_NUM_PER_FRACTAL), tiling->s2Tile, tiling->d),
                 resource_, mmadParams, gmBlockTable, gmZeroPage);
-            while (blockScheduler.GetNextCoord(qStart, actualQ, kStart, actualK, batchIdx, localQStart)) {
+            SparseIndexer::Common::Block::ScheduleCoord coord{};
+            while (blockScheduler.GetNextCoord(coord)) {
+                const GeneralIndexerKernelDetail::GeneralIndexerTask task =
+                    GeneralIndexerKernelDetail::MakeGeneralIndexerTask(coord, blockScheduler.source());
+                const SparseIndexer::Common::Block::KeyCoord keyCoord{task.coord.kStart, task.coord.kStart - task.requestKStart, task.coord.batchIdx};
                 asc_sync_block_wait(PIPE_FIX, FLAG_VEC_TO_CUBE);
-                blockMmad(qStart * tiling->n1, actualQ * tiling->n1, kStart, actualK, batchIdx);
+                blockMmad(task.coord.qStart * tiling->n1, task.coord.actualQ * tiling->n1, keyCoord, task.coord.actualK);
                 asc_sync_block_arrive(PIPE_FIX, FLAG_CUBE_TO_VEC);
             }
             asc_sync_block_wait(PIPE_FIX, FLAG_VEC_TO_CUBE);
@@ -152,9 +133,14 @@ public:
             typename BlockReduceHead::Params reduceParams = MakeReduceParams(tiling);
             BlockReduceHead blockReduceHead(ubC_, resource_, gmW, scores, reduceParams);
             asc_sync_block_arrive(PIPE_MTE3, FLAG_VEC_TO_CUBE);
-            while (blockScheduler.GetNextCoord(qStart, actualQ, kStart, actualK, batchIdx, localQStart)) {
+            SparseIndexer::Common::Block::ScheduleCoord coord{};
+            while (blockScheduler.GetNextCoord(coord)) {
+                const GeneralIndexerKernelDetail::GeneralIndexerTask task =
+                    GeneralIndexerKernelDetail::MakeGeneralIndexerTask(coord, blockScheduler.source());
                 asc_sync_block_wait(PIPE_V, FLAG_CUBE_TO_VEC);
-                blockReduceHead(qStart, actualQ, kStart, actualK, batchIdx, localQStart);
+                blockReduceHead(task.coord.qStart, task.coord.actualQ, task.coord.kStart, task.coord.actualK,
+                                task.coord.localQStart, task.activeQ, task.activeK, task.requestKStart, task.residual,
+                                task.maskActive);
                 asc_sync_block_arrive(PIPE_MTE3, FLAG_VEC_TO_CUBE);
             }
         }
@@ -163,8 +149,9 @@ public:
         if ASCEND_IS_AIV {
             typename BlockTopK::Params topkParams = MakeTopKParams(tiling);
             BlockTopK blockTopK(resource_, scores, outIndices, topkParams, gmOutputIdxOffset, outValues);
-            while (blockScheduler.GetNextTopKCoord(qStart, actualQ, kStart, actualK)) {
-                blockTopK(qStart, actualQ, kStart, actualK);
+            SparseIndexer::Common::Block::ScheduleCoord coord{};
+            while (blockScheduler.GetNextTopKCoord(coord)) {
+                blockTopK(coord.qStart, coord.actualQ, coord.kStart, coord.actualK);
             }
         }
     }

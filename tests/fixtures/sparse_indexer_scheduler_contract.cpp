@@ -52,14 +52,14 @@ static bool CheckA()
     SchedulerA scheduler(params);
     SparseIndexer::Common::Block::ScheduleCoord coord{};
     const uint32_t expected[][5] = {
-        {4, 0, 4, 0, 4},
-        {4, 0, 4, 4, 2},
-        {3, 4, 3, 6, 2},
+        {4, 0, 0, 0, 4},
+        {4, 0, 0, 4, 2},
+        {3, 4, 0, 6, 2},
     };
     uint32_t index = 0;
     while (scheduler.GetNextCoord(coord)) {
         if (index >= 3 || coord.actualQ != expected[index][0] || coord.qStart != expected[index][1] ||
-            coord.localQStart != expected[index][1] || coord.kStart != expected[index][3] ||
+            coord.localQStart != expected[index][2] || coord.kStart != expected[index][3] ||
             coord.actualK != expected[index][4]) {
             return false;
         }
@@ -69,13 +69,13 @@ static bool CheckA()
         return false;
     }
     const uint32_t expectedTopK[][5] = {
-        {4, 0, 4, 0, 6},
-        {3, 4, 3, 6, 2},
+        {4, 0, 0, 0, 6},
+        {3, 4, 0, 6, 2},
     };
     index = 0;
     while (scheduler.GetNextTopKCoord(coord)) {
         if (index >= 2 || coord.actualQ != expectedTopK[index][0] || coord.qStart != expectedTopK[index][1] ||
-            coord.localQStart != expectedTopK[index][1] || coord.kStart != expectedTopK[index][3] ||
+            coord.localQStart != expectedTopK[index][2] || coord.kStart != expectedTopK[index][3] ||
             coord.actualK != expectedTopK[index][4]) {
             return false;
         }
@@ -91,17 +91,22 @@ static bool CheckB()
     params.policy.s2Tile = 4;
     SchedulerB scheduler(params);
     SparseIndexer::Common::Block::ScheduleCoord coord{};
+    const uint32_t expected[][5] = {
+        {1, 0, 0, 0, 4},
+        {1, 0, 0, 4, 4},
+        {1, 1, 0, 8, 1},
+        {1, 2, 1, 8, 1},
+    };
     uint32_t count = 0;
     while (scheduler.GetNextCoord(coord)) {
-        if (coord.batchIdx == 0 && (coord.qStart != 0 || coord.kStart != 0 || coord.actualK != 4)) {
-            return false;
-        }
-        if (coord.batchIdx == 1 && (coord.qStart != 1 || coord.kStart != 8 || coord.actualK != 1)) {
+        if (count >= 4 || coord.actualQ != expected[count][0] || coord.qStart != expected[count][1] ||
+            coord.localQStart != expected[count][2] || coord.kStart != expected[count][3] ||
+            coord.actualK != expected[count][4]) {
             return false;
         }
         ++count;
     }
-    return count == 5;
+    return count == 4;
 }
 
 int main()

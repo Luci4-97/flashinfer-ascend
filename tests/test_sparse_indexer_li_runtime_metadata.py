@@ -55,7 +55,7 @@ def test_common_scheduler_accepts_a_different_variant_metadata_schema(tmp_path):
     )
     executed = subprocess.run([str(executable)], text=True, capture_output=True, check=False)
     assert executed.returncode == 0, executed.stdout + executed.stderr
-    assert executed.stdout.strip() == "4:0:4:0:4\n4:0:4:4:2\n3:4:3:6:2\n4:0:4:0:6\n3:4:3:6:2"
+    assert executed.stdout.strip() == "4:0:0:0:4\n4:0:0:4:2\n3:4:0:6:2\n4:0:0:0:6\n3:4:0:6:2"
 
 
 def test_kernel_entry_forwards_runtime_metadata_instead_of_void_casting_it():
@@ -84,4 +84,5 @@ def test_key_loader_consumes_resolved_key_coordinates():
     assert "globalNStart" in text
     assert "requestNStart" in text
     assert "cuK" not in text
-    assert "batchIdx" not in text
+    assert "seqused" not in text
+    assert "cmpResidual" not in text

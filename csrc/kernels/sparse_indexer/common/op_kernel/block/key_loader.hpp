@@ -15,6 +15,13 @@
 
 namespace SparseIndexer::Common::Block {
 
+/// Address data resolved by BlockScheduler for one request-local K tile.
+struct KeyCoord {
+    uint32_t globalNStart{0};
+    uint32_t requestNStart{0};
+    uint32_t batchIdx{0};
+};
+
 /**
  * Contiguous Key → L1B (default path).
  * Load uses logical (kPart, nStart) into ColumnMajor GM [D, S2].
@@ -49,10 +56,10 @@ public:
 
     template <class TensorL1, class LayoutL1>
     CATLASS_DEVICE void Load(
-        TensorL1 const& l1B, LayoutL1 const& layoutL1, uint32_t kPartStart, uint32_t actualK, uint32_t nStart,
-        uint32_t actualN, uint32_t /*batchIdx*/)
+        TensorL1 const& l1B, LayoutL1 const& layoutL1, uint32_t kPartStart, uint32_t actualK,
+        KeyCoord const& keyCoord, uint32_t actualN)
     {
-        int64_t offsetB = layoutB_.GetOffset(Catlass::MatrixCoord(kPartStart, nStart));
+        int64_t offsetB = layoutB_.GetOffset(Catlass::MatrixCoord(kPartStart, keyCoord.globalNStart));
         copyGmToL1B_(
             l1B, gmB_[offsetB], layoutL1, layoutB_.GetTileLayout(Catlass::MatrixCoord(actualK, actualN)));
     }
@@ -87,8 +94,6 @@ public:
         uint32_t blockSize{0};
         uint32_t maxBlocksPerBatch{0};
         uint32_t numPages{0};
-        uint32_t batch{1};
-        int32_t cuK[kMaxBatch + 1]{0};
     };
 
     static constexpr bool kPaged = true;
@@ -113,23 +118,16 @@ public:
         maxBlocks_ = params.maxBlocksPerBatch;
         numPages_ = params.numPages;
         d_ = params.d;
-        batch_ = params.batch == 0 ? 1U : params.batch;
         gmTable_ = gmTable;
         gmZero_ = gmZero;
-        for (uint32_t i = 0; i <= batch_ && i <= kMaxBatch; ++i) {
-            cuK_[i] = params.cuK[i];
-        }
     }
 
     template <class TensorL1, class LayoutL1>
     CATLASS_DEVICE void Load(
-        TensorL1 const& l1B, LayoutL1 const& layoutL1, uint32_t kPartStart, uint32_t actualK, uint32_t nStart,
-        uint32_t actualN, uint32_t batchIdx)
+        TensorL1 const& l1B, LayoutL1 const& layoutL1, uint32_t kPartStart, uint32_t actualK,
+        KeyCoord const& keyCoord, uint32_t actualN)
     {
-        uint32_t localN = nStart;
-        if (batchIdx < batch_) {
-            localN = nStart - static_cast<uint32_t>(cuK_[batchIdx]);
-        }
+        const uint32_t localN = keyCoord.requestNStart;
 
         uint32_t copyCol = 0;
         while (copyCol < actualN) {
@@ -142,8 +140,8 @@ public:
             }
 
             int32_t pageId = -1;
-            if (batchIdx < batch_ && logicalBlock < maxBlocks_) {
-                pageId = gmTable_.GetValue(static_cast<int64_t>(batchIdx) * maxBlocks_ + logicalBlock);
+            if (logicalBlock < maxBlocks_) {
+                pageId = gmTable_.GetValue(static_cast<int64_t>(keyCoord.batchIdx) * maxBlocks_ + logicalBlock);
             }
 
             AscendC::GlobalTensor<DtypeB> src;
@@ -173,8 +171,6 @@ private:
     uint32_t maxBlocks_{0};
     uint32_t numPages_{0};
     uint32_t d_{0};
-    uint32_t batch_{1};
-    int32_t cuK_[kMaxBatch + 1]{0};
 };
 
 } // namespace SparseIndexer::Common::Block
