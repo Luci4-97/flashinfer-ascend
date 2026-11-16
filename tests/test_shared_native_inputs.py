@@ -5,11 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from flashinfer.ascendc.attention.general_indexer.implementation import IMPLEMENTATION
 from flashinfer.ascendc.authoring import prepare_native
 from flashinfer.ascendc.definition import BuildConfig
+from flashinfer.ascendc.sparse_indexer.general_indexer.implementation import (
+    IMPLEMENTATION,
+)
 from flashinfer.runtime import SchemaError
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,4 +46,4 @@ def test_prepare_native_rejects_unsafe_shared_roots(root):
         build=replace(IMPLEMENTATION.native.build, shared_native_roots=(root,)),
     )
     with pytest.raises(SchemaError, match="shared native"):
-        prepare_native(ROOT, ROOT / "flashinfer/ascendc/attention/general_indexer", native)
+        prepare_native(ROOT, ROOT / "flashinfer/ascendc/sparse_indexer/general_indexer", native)

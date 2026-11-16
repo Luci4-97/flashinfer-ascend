@@ -1,4 +1,4 @@
-"""Declarative Ascend C package for attention.general_indexer."""
+"""Declarative Ascend C package for sparse_indexer.general_indexer."""
 
 from flashinfer.ascendc.definition import (
     AscendCImplementation,
@@ -12,7 +12,7 @@ from flashinfer.jit.recipe import (
     ShapeConstraint,
     TensorParameter,
 )
-from flashinfer.operators.attention.general_indexer.operator import (
+from flashinfer.operators.sparse_indexer.general_indexer.operator import (
     MAX_BATCH,
     MAX_HEAD_DIM,
     MAX_HEADS,
@@ -25,7 +25,7 @@ from flashinfer.runtime import CapabilityCase
 
 from .runner import admission, make_runner
 
-KERNEL_ID = "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+KERNEL_ID = "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"
 
 
 def _tensor(name, role, dtype, shape, *, alternative=(), optional=False):
@@ -97,6 +97,7 @@ IMPLEMENTATION = AscendCImplementation(
         package_vendor="flashinfer_general_indexer",
         recipe_id="general_indexer",
     ),
+    source_dir="csrc/kernels/attention/general_indexer",
     binding=NativeBinding(
         tensors=_TENSORS,
         dimensions=(

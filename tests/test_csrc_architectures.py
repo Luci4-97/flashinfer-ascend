@@ -248,7 +248,7 @@ def test_current_csrc_native_probe_builds_and_executes_on_available_device(tmp_p
 @pytest.mark.parametrize(
     "kernel_id",
     [
-        "ascendc/attention/general_indexer/catlass/op_package/Ascend950",
+        "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950",
         "ascendc/gemm/matmul/native/op_package/Ascend950",
         "ascendc/t2/matmul_bias_silu/native/op_package/Ascend950",
         "ascendc/t4/flash_attention/catlass/op_package/Ascend950",

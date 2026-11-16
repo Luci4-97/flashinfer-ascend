@@ -1,12 +1,14 @@
-"""Public contract tests for attention.general_indexer."""
+"""Public contract tests for sparse_indexer.general_indexer."""
 
 import os
 
 import pytest
 import torch
 
-from flashinfer.ascendc.attention.general_indexer.implementation import IMPLEMENTATION
-from flashinfer.operators.attention.general_indexer.operator import OPERATOR
+from flashinfer.ascendc.sparse_indexer.general_indexer.implementation import (
+    IMPLEMENTATION,
+)
+from flashinfer.operators.sparse_indexer.general_indexer.operator import OPERATOR
 
 
 class Tensor:
@@ -89,11 +91,11 @@ def test_invalid_shape_or_attribute_is_rejected(change, match):
 
 
 def test_native_recipe_declares_full_ordered_abi():
-    from flashinfer.ascendc.attention.general_indexer.implementation import NATIVE
+    from flashinfer.ascendc.sparse_indexer.general_indexer.implementation import NATIVE
     from flashinfer.jit.recipe import CATLASS_REVISION
 
     assert NATIVE.kernel_id == (
-        "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+        "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"
     )
     assert [item.name for item in NATIVE.tensors] == [
         "query", "key", "weights", "block_table", "cu_seqlens_q",
@@ -177,7 +179,7 @@ def test_common_blocks_do_not_depend_on_concrete_general_indexer_tiling():
 def test_cpu_golden_is_stable_and_pads_values():
     import torch
 
-    from flashinfer.operators.attention.general_indexer.cases import golden
+    from flashinfer.operators.sparse_indexer.general_indexer.cases import golden
 
     q = torch.tensor([[[1.0], [1.0]], [[2.0], [1.0]]])
     k = torch.tensor([[1.0], [2.0], [3.0]])
@@ -263,7 +265,7 @@ def test_fake_metadata_and_dispatch_cover_all_layouts(layout_q, layout_k, paged)
     request, _, _ = signature(OPERATOR.op, args)
     decision = dispatch(request, HardwareSignature("Ascend950", 28))
     assert decision.kernel_id == (
-        "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+        "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"
     )
 
 
@@ -279,7 +281,7 @@ def test_paged_4d_key_dispatches_exactly():
     request, _, _ = signature(OPERATOR.op, args)
     decision = dispatch(request, HardwareSignature("Ascend950", 28))
     assert decision.kernel_id == (
-        "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+        "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"
     )
 
 
@@ -300,7 +302,9 @@ def test_fake_rejects_invalid_contract_and_out_alias():
 
 
 def test_runner_adapts_disabled_outputs_to_hidden_native_buffers():
-    from flashinfer.ascendc.attention.general_indexer.runner import GeneralIndexerRunner
+    from flashinfer.ascendc.sparse_indexer.general_indexer.runner import (
+        GeneralIndexerRunner,
+    )
 
     args = _torch_arguments()
     invocation = OPERATOR.infer(args, None)
@@ -362,11 +366,11 @@ def test_production_inventory_declares_general_indexer_exactly():
         STACK_COUNTS,
     )
 
-    kernel_id = "ascendc/attention/general_indexer/catlass/op_package/Ascend950"
+    kernel_id = "ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"
     assert kernel_id in PRODUCTION_KERNEL_IDS
-    assert "attention.general_indexer" in PRODUCTION_OPS
+    assert "sparse_indexer.general_indexer" in PRODUCTION_OPS
     assert any(row[0] == kernel_id and row[1:] == (
-        "attention.general_indexer", "general_indexer", "catlass", "Ascend950"
+        "sparse_indexer.general_indexer", "general_indexer", "catlass", "Ascend950"
     ) for row in PRODUCTION)
     assert len(PRODUCTION) == STACK_COUNTS["ascendc"] == 10
     assert DEFAULT_DESCRIPTOR_COUNT == 91

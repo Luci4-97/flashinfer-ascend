@@ -1,11 +1,11 @@
-"""Subprocess acceptance cases for attention.general_indexer."""
+"""Subprocess acceptance cases for sparse_indexer.general_indexer."""
 
 import argparse
 
 import torch
 
-from flashinfer.operators.attention.general_indexer.cases import golden
 from flashinfer.operators.runtime import public_function
+from flashinfer.operators.sparse_indexer.general_indexer.cases import golden
 
 
 def _device(tensor):

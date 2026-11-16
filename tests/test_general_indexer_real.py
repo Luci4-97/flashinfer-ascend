@@ -1,4 +1,4 @@
-"""Real-NPU edge acceptance for attention.general_indexer in fresh processes."""
+"""Real-NPU edge acceptance for sparse_indexer.general_indexer in fresh processes."""
 
 import os
 import subprocess

@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from flashinfer.operators import Invocation, OperatorDefinition, OutputSpec
 from flashinfer.runtime import InferenceSpec
 
-OP = "attention.general_indexer"
+OP = "sparse_indexer.general_indexer"
 MAX_TOPK = 8192
 MAX_TOTAL = 16384
 MAX_HEAD_DIM = 64
@@ -330,7 +330,7 @@ def validate_values(arguments):
 
 OPERATOR = OperatorDefinition(
     name="general_indexer",
-    domain="attention",
+    domain="sparse_indexer",
     op=OP,
     schema=(
         "(Tensor query, Tensor key, Tensor weights, int k, *, "

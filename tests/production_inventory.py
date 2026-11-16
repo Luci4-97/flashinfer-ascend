@@ -14,7 +14,7 @@ PRODUCTION = (
     ("ascendc/gemm/matmul/native/op_package/Ascend950", "gemm.matmul", "matmul", "native", "Ascend950"),
     ("ascendc/gemm/grouped_matmul_swiglu_quant/native/op_package/Ascend910B", "gemm.grouped_matmul_swiglu_quant", "grouped_matmul_swiglu_quant", "native", "Ascend910B"),
     ("ascendc/attention/sparse_flash_attention/native/Ascend910B", "attention.sparse_flash_attention", "sparse_flash_attention", "native", "Ascend910B"),
-    ("ascendc/attention/general_indexer/catlass/op_package/Ascend950", "attention.general_indexer", "general_indexer", "catlass", "Ascend950"),
+    ("ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950", "sparse_indexer.general_indexer", "general_indexer", "catlass", "Ascend950"),
 )
 PRODUCTION_KERNEL_IDS = frozenset(row[0] for row in PRODUCTION)
 PRODUCTION_OPS = frozenset(row[1] for row in PRODUCTION)

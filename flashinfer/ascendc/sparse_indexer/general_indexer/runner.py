@@ -48,7 +48,7 @@ class GeneralIndexerRunner:
                  output_idx_offset, indices, values, scores, **attributes):
         import torch
 
-        from flashinfer.operators.attention.general_indexer.operator import _meta
+        from flashinfer.operators.sparse_indexer.general_indexer.operator import _meta
 
         topk = int(indices.shape[-1])
         arguments = {

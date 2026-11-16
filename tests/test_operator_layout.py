@@ -83,8 +83,8 @@ def test_existing_85_and_reviewed_arch22_capabilities_match_exactly():
     ):
         expected[kernel_id.rsplit("/", 1)[0] + "/Ascend910C"] = dict(
             expected[kernel_id], soc_models=["Ascend910C"])
-    expected["ascendc/attention/general_indexer/catlass/op_package/Ascend950"] = CapabilitySpec(
-        op="attention.general_indexer",
+    expected["ascendc/sparse_indexer/general_indexer/catlass/op_package/Ascend950"] = CapabilitySpec(
+        op="sparse_indexer.general_indexer",
         soc_models=("Ascend950",),
         cases=(
             CapabilityCase(
