@@ -39,3 +39,12 @@ GeneralIndexer 当前输出 token TopK 形状 `[Tq,k]`；SparseFlashAttention �
 - 公共契约、AOT 路径和 block 无 concrete tiling 依赖来自 GeneralIndexer 定向测试。
 - `test_sparse_indexer_contract.py` 固化 token TopK→sparse block 的转换和 SparseFlashAttention metadata 契约。
 - 目标 SoC 真机端到端、图 capture/replay、性能和多卡并发未验证。
+## 运行时 metadata 与校验模式
+
+`cu_seqlens_q/k`、`seqused_q/k`、`cmp_residual_k` 属于 kernel 运行时 metadata。
+host tiling 只记录 shape、presence flag 和静态调度参数；kernel 在执行时从对应 GM Tensor
+读取实际值。默认 eager 路径因此不再为这些值执行 host D2H。
+
+shape、dtype、device、optional 输入组合以及 mask 属性仍会在公共入口做结构校验。
+需要额外检查 metadata 值域时，可显式传入 `validate_metadata=True`；该调试模式会保留
+原有 cu/seqused/residual 范围检查，但会产生 host 读取开销。

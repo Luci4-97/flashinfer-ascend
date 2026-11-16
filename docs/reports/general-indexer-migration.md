@@ -526,3 +526,109 @@ spec=92e13b6978d4e553a00a5bd07093a386b8737bbc267dd644b2af8152412f86ff
 
 本次清理未重跑 full；最近一次 full 为 `2485 passed / 31 failed / 21 errors / 6 skipped`，
 其失败项已归因为环境、目标不适用和上游 fixture 问题；所有 sparse_indexer 相关用例通过。
+## 13. LI V2 runtime metadata 执行路径对齐（2026-11-16）
+
+本次在不改变数学公式、固定三输出和 ABI 参数顺序的前提下，把变长 metadata 从 host tiling
+快照迁移为 kernel 运行时读取，同时保留 CATLASS 风格的模板策略分层。
+
+### 13.1 实现
+
+- `common/op_kernel/block/block_scheduler.hpp`：`BlockScheduler<RequestRangeSource, SchedulePolicy>`
+  只依赖规范化的 request range，输出通用 `ScheduleCoord`；`RequestBlockDiagonalPolicy`
+  保持 request × qTile × kTile 调度。
+- `common/op_kernel/block/key_loader.hpp`：新增 `KeyCoord{globalNStart, requestNStart, batchIdx}`，
+  Contiguous/Paged KeyLoader 不再读取原始 cu_seqlens。
+- `general_indexer/op_kernel/arch35/general_indexer_source.h`：variant-specific adapter 在 kernel
+  启动后从 GM 读取 cu/seqused/cmp residual；`general_indexer_task.h` 补充 activeQ/K 和 residual。
+- `general_indexer_tiling_data.h`：删除 5 组 per-request metadata 数组，只保留静态几何和
+  presence flags。host tiling 不再对这些值执行 D2H。
+- `common/op_kernel/block/mask_policy.hpp`：新增 `NoMaskPolicy` / `LiV2MaskPolicy` 静态策略；
+  kernel entry 根据 tiling mask 属性选择。
+- 公共入口新增关键字参数 `validate_metadata=False`。default NPU fast path 只做 shape/dtype/
+  presence 校验；显式设为 `True` 时保留原有 metadata 值域检查。
+
+### 13.2 TDD 提交
+
+```text
+d64913b test(sparse_indexer): define extensible runtime metadata contract
+b1afe4b refactor(sparse_indexer): abstract scheduler request range policy
+d60cbd3 feat(sparse_indexer): read sequence metadata in kernel
+01690ac refactor(sparse_indexer): remove host metadata snapshots
+506c0a0 refactor(sparse_indexer): separate fast-path and strict metadata validation
+6e2b353 refactor(sparse_indexer): specialize indexer block policies
+```
+
+### 13.3 构建与验证
+
+最终 general_indexer spec：
+
+```text
+f62506bd1ef087cc54a25574a6fdb22c9788764cd7b11a10a2800b2852915c26
+```
+
+A950 四个生产包的冷 AOT 构建：
+
+```text
+built=4, failed=0, skipped=0
+```
+
+Mask 策略展开后的 general_indexer 包大小约 `1.83 MB`；相较单 mask 路径的约 `1.57 MB`
+增加约 16%。本报告只记录构建结果，不作性能结论。
+
+定向测试：
+
+```text
+test_sparse_indexer_li_runtime_metadata.py + test_sparse_indexer_blocks.py: 14 passed
+test_general_indexer.py + test_operator_layout.py + runtime metadata tests: 51 passed
+test_general_indexer_real.py: 8 passed
+test_operator_packages_real.py -k general_indexer: 6 passed
+```
+
+quick：
+
+```text
+2384 passed, 170 deselected, 0 skipped, 0 failed
+{"exit_code": 0, "passed": 2788, "skipped": 0}
+```
+
+full：
+
+```text
+2496 passed, 31 failed, 21 errors, 6 skipped, 404 subtests passed
+```
+
+full 内 `sparse_indexer` / `general_indexer` 相关用例共 67 个，失败、错误和 skip 均为 0。
+剩余失败仍属于既有环境/目标不适用、torch_npu/Inductor 能力、Triton 缺失和上游 fixture
+问题；本次未修改这些外部条件。
+
+### 13.4 最终 wheel 与干净安装
+
+```text
+/tmp/fi-li-final-wheel.xz6CRa/dist/flashinfer_ascend950-0.1.0.dev0-py3-none-linux_x86_64.whl
+size=3.5M
+sha256=c3d3924e6122cc63f00a4cd8be71fcf0ad1995ef567e520a2e71f91063d3396c
+```
+
+干净 venv：
+
+```text
+/tmp/fi-li-venv.fhtVnP
+flashinfer=/tmp/fi-li-venv.fhtVnP/lib/python3.11/site-packages/flashinfer/__init__.py
+```
+
+selftest：
+
+```text
+Summary: 4 PASS, 0 FAIL, 0 SKIP (total=4)
+PASS sparse_indexer.general_indexer: bundled AOT hit; compilation=disabled
+spec=f62506bd1ef087cc54a25574a6fdb22c9788764cd7b11a10a2800b2852915c26
+```
+
+### 13.5 行为变化与未验证项
+
+- NPU 默认 fast path 不再读取 metadata 值；非法 cu/seqused/residual 的详细值域错误需要
+  `validate_metadata=True`。shape/dtype/presence 和 mask 属性检查仍始终执行。
+- runner 的 BSND index 后处理仍可能读取 cu_seqlens；本次对齐的是 kernel metadata 执行路径，
+  不是所有 host 后处理 D2H。
+- 未验证同 SoC indexer→sparse attention 真机端到端、图 capture/replay、性能和多卡并发。
+- `lightning_indexer` 仍未创建、注册或构建。
