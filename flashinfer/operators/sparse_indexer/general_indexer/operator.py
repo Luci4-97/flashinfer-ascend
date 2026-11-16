@@ -279,7 +279,28 @@ def infer(arguments, layouts):
     )
 
 
+_METADATA_TENSOR_NAMES = (
+    "cu_seqlens_q", "cu_seqlens_k", "seqused_q", "seqused_k",
+    "cmp_residual_k", "block_table", "output_idx_offset",
+)
+
+
+def _strict_metadata(arguments):
+    if arguments.get("validate_metadata", False):
+        return True
+    for name in _METADATA_TENSOR_NAMES:
+        tensor = arguments.get(name)
+        if tensor is not None and getattr(tensor.device, "type", None) != "cpu":
+            return False
+    return True
+
+
 def validate_values(arguments):
+    # Shape/dtype/presence validation already happens in _meta/infer. Reading
+    # NPU metadata values here would add a host D2H on every eager launch, so
+    # value-domain checks are opt-in for device tensors.
+    if not _strict_metadata(arguments):
+        return
     meta = _meta(arguments)
     cu_q = arguments["cu_seqlens_q"]
     cu_k = arguments["cu_seqlens_k"]
@@ -338,7 +359,8 @@ OPERATOR = OperatorDefinition(
         "int max_seq_len_k=0, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, "
         "Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? cmp_residual_k=None, "
         "Tensor? block_table=None, Tensor? output_idx_offset=None, "
-        "bool return_value=False, bool return_score=False) -> (Tensor, Tensor, Tensor)"
+        "bool return_value=False, bool return_score=False, "
+        "bool validate_metadata=False) -> (Tensor, Tensor, Tensor)"
     ),
     output_names=("indices", "values", "scores"),
     infer=infer,

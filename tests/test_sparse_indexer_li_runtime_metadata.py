@@ -86,3 +86,68 @@ def test_key_loader_consumes_resolved_key_coordinates():
     assert "cuK" not in text
     assert "seqused" not in text
     assert "cmpResidual" not in text
+
+
+class _NoReadMetadataTensor:
+    dtype = "torch.int32"
+
+    def __init__(self, shape):
+        self.shape = tuple(shape)
+        self.device = type("Device", (), {"type": "npu"})()
+
+    def cpu(self):
+        raise AssertionError("fast path must not read runtime metadata values")
+
+
+def _validation_arguments():
+    import torch
+
+    from tests.test_general_indexer import args
+
+    return args(
+        layout_q="TND",
+        layout_k="TND",
+        query=torch.empty((8, 2, 16), dtype=torch.float16),
+        key=torch.empty((16, 16), dtype=torch.float16),
+        weights=torch.empty((8, 2), dtype=torch.float16),
+        cu_q=_NoReadMetadataTensor((2,)),
+        cu_k=_NoReadMetadataTensor((2,)),
+        seqused_q=_NoReadMetadataTensor((1,)),
+        seqused_k=_NoReadMetadataTensor((1,)),
+    )
+
+
+def test_public_contract_exposes_opt_in_strict_metadata_validation():
+    import inspect
+
+    assert "validate_metadata" in inspect.signature(
+        __import__("flashinfer").general_indexer
+    ).parameters
+
+
+def test_npu_fast_path_does_not_read_metadata_values():
+    from flashinfer.operators.sparse_indexer.general_indexer.operator import OPERATOR
+
+    arguments = _validation_arguments()
+    arguments["validate_metadata"] = False
+    OPERATOR.validate_values(arguments)
+
+
+def test_strict_metadata_validation_still_rejects_bad_values():
+    import torch
+
+    from tests.test_general_indexer import args
+    from flashinfer.operators.sparse_indexer.general_indexer.operator import OPERATOR
+
+    arguments = args(
+        layout_q="TND",
+        layout_k="TND",
+        query=torch.empty((8, 2, 16), dtype=torch.float16),
+        key=torch.empty((8, 16), dtype=torch.float16),
+        weights=torch.empty((8, 2), dtype=torch.float16),
+        cu_q=torch.tensor([1, 8], dtype=torch.int32),
+        cu_k=torch.tensor([0, 8], dtype=torch.int32),
+    )
+    arguments["validate_metadata"] = True
+    with __import__("pytest").raises(ValueError, match="start at 0"):
+        OPERATOR.validate_values(arguments)
