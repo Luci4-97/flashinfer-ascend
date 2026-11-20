@@ -3,32 +3,33 @@
  * Licensed under CANN Open Software License Agreement Version 2.0.
  */
 
-#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_SUPPORT_SCORE_BUFFER_HPP
-#define FLASHINFER_SPARSE_INDEXER_BLOCK_SUPPORT_SCORE_BUFFER_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_FOUNDATION_RESOURCE_SCORE_BUFFER_HPP
+#define FLASHINFER_SPARSE_INDEXER_FOUNDATION_RESOURCE_SCORE_BUFFER_HPP
 
-#include "catlass/arch/arch.hpp"
+#include <cstdint>
+
 #include "catlass/detail/macros.hpp"
-#include "sparse_indexer/foundation/contracts/common.hpp"
 
-namespace SparseIndexer::Common::Block {
+namespace SparseIndexer::Common {
 
-template <class Tiling>
-CATLASS_DEVICE inline uint32_t ScoreElementsPerAiv(Tiling const* tiling)
+struct ScoreBufferGeometry {
+    uint32_t workRows{0};
+    uint32_t heads{0};
+    uint32_t colsPerAiv{0};
+};
+
+CATLASS_HOST_DEVICE constexpr uint32_t ScoreElementsPerAiv(ScoreBufferGeometry const& geometry)
 {
-    const uint32_t workRows = CeilDiv(tiling->s1Tile, 2U);
-    const uint32_t colPerAiv = AlignUp(tiling->s2Tile, 8U);
-    return workRows * tiling->n1 * colPerAiv;
+    return geometry.workRows * geometry.heads * geometry.colsPerAiv;
 }
 
-template <class Tiling>
-CATLASS_DEVICE inline uint32_t ScoreBufferCount(Tiling const* tiling)
+CATLASS_HOST_DEVICE constexpr uint32_t ScoreBufferCount(
+    uint32_t scoreElements, uint64_t ubSize, uint64_t scratchReserve = 64U * 1024U)
 {
-    constexpr uint64_t kUbSize = Catlass::Arch::Ascend950::UB_SIZE;
-    constexpr uint64_t kScratchReserve = 64U * 1024U;
-    const uint64_t twoScores = 2ULL * ScoreElementsPerAiv(tiling) * sizeof(float);
-    return twoScores + kScratchReserve <= kUbSize ? 2U : 1U;
+    const uint64_t twoScores = 2ULL * scoreElements * sizeof(float);
+    return twoScores + scratchReserve <= ubSize ? 2U : 1U;
 }
 
-} // namespace SparseIndexer::Common::Block
+} // namespace SparseIndexer::Common
 
-#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_SUPPORT_SCORE_BUFFER_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_FOUNDATION_RESOURCE_SCORE_BUFFER_HPP

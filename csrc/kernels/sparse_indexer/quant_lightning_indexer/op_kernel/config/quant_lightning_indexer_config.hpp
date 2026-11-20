@@ -20,7 +20,7 @@
 #include "sparse_indexer/block/selection/prefix_select.hpp"
 #include "sparse_indexer/block/selection/runtime.hpp"
 #include "sparse_indexer/block/selection/topk_vf.hpp"
-#include "sparse_indexer/block/support/score_buffer.hpp"
+#include "sparse_indexer/foundation/resource/score_buffer.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
 #include "sparse_indexer/foundation/contracts/policy.hpp"
 #include "sparse_indexer/foundation/resource/current_policy.hpp"
@@ -56,6 +56,26 @@ struct CurrentPolicy : SparseIndexer::Common::PolicyBundle<
     using ReduceRuntimeParams = ReduceParams;
     using SelectionRuntimeParams = SelectionParams;
 
+    CATLASS_DEVICE static SparseIndexer::Common::ScoreBufferGeometry ScoreGeometry(
+        __gm__ QuantLightningIndexerTilingData const* tiling)
+    {
+        return {
+            SparseIndexer::Common::CeilDiv(tiling->s1Tile, 2U),
+            tiling->n1,
+            SparseIndexer::Common::AlignUp(tiling->s2Tile, 8U)};
+    }
+
+    CATLASS_DEVICE static uint32_t ScoreElements(__gm__ QuantLightningIndexerTilingData const* tiling)
+    {
+        return SparseIndexer::Common::ScoreElementsPerAiv(ScoreGeometry(tiling));
+    }
+
+    CATLASS_DEVICE static uint32_t ScoreBuffers(__gm__ QuantLightningIndexerTilingData const* tiling)
+    {
+        return SparseIndexer::Common::ScoreBufferCount(
+            ScoreElements(tiling), Catlass::Arch::Ascend950::UB_SIZE);
+    }
+
     CATLASS_DEVICE __attribute__((always_inline)) static ScheduleParams MakeScheduleParams(
         __gm__ QuantLightningIndexerTilingData const* tiling, GM_ADDR cuSeqlensQ, GM_ADDR sequsedK,
         GM_ADDR cmpResidualK)
@@ -78,8 +98,8 @@ struct CurrentPolicy : SparseIndexer::Common::PolicyBundle<
         runtime.tileShape = Catlass::GemmCoord(
             SparseIndexer::Common::AlignUp(tiling->s1Tile * tiling->n1, 16U), tiling->s2Tile, tiling->d);
         runtime.heads = tiling->n1;
-        runtime.scoreBuffers = SparseIndexer::Common::Block::ScoreBufferCount(tiling);
-        runtime.scoreElemsPerAiv = SparseIndexer::Common::Block::ScoreElementsPerAiv(tiling);
+        runtime.scoreBuffers = ScoreBuffers(tiling);
+        runtime.scoreElemsPerAiv = ScoreElements(tiling);
         runtime.mask = SparseIndexer::Common::Block::MaskRuntimeParams{
             tiling->maskMode, static_cast<uint32_t>(tiling->cmpRatio), tiling->s2Tile};
         return runtime;
@@ -99,7 +119,7 @@ struct CurrentPolicy : SparseIndexer::Common::PolicyBundle<
         runtime.block.maxBlocksPerBatch = tiling->maxBlocksPerBatch;
         runtime.block.numPages = tiling->numPages;
         runtime.block.kScaleStride0 = tiling->kScaleStride0;
-        runtime.block.scoreBuffers = SparseIndexer::Common::Block::ScoreBufferCount(tiling);
+        runtime.block.scoreBuffers = ScoreBuffers(tiling);
         runtime.scoreBuffers = runtime.block.scoreBuffers;
         runtime.mask = SparseIndexer::Common::Block::MaskRuntimeParams{
             tiling->maskMode, static_cast<uint32_t>(tiling->cmpRatio), tiling->s2Tile};
