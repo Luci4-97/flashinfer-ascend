@@ -13,7 +13,6 @@
 #include "sparse_indexer/block/mask/runtime.hpp"
 #include "sparse_indexer/block/mma/runtime.hpp"
 #include "sparse_indexer/block/mma/split_m.hpp"
-#include "sparse_indexer/block/reduce/inline_row_split.hpp"
 #include "sparse_indexer/block/reduce/quant_head.hpp"
 #include "sparse_indexer/block/reduce/runtime.hpp"
 #include "sparse_indexer/block/schedule/static_gsa1.hpp"
@@ -41,7 +40,7 @@ using Schedule = SparseIndexer::Common::Block::StaticGSA1SchedulePolicy<
 using Mmad = SparseIndexer::Common::Block::SplitMMmadPolicy<QkDtype, KeyLoad>;
 using QuantHead = SparseIndexer::Common::Block::BlockReduceQuantHead<
     SparseIndexer::Common::Block::LiV2MaskPolicy<float>, true>;
-using Reduce = SparseIndexer::Common::Block::InlineRowSplitReducePolicy<QuantHead>;
+using Reduce = QuantHead;
 using Selection = SparseIndexer::Common::Block::InlinePrefixLiTopKVFPolicy<
     SparseIndexer::Common::Block::BlockTopKVector<float, int32_t, true>>;
 

@@ -106,6 +106,7 @@ public:
     using DtypeDst = float;
     using ArchTag = Catlass::Arch::Ascend950;
     using MaskPolicy = MaskPolicy_;
+    using Block = BlockReduceQuantHead;
 
     static constexpr uint32_t kFloatBlock = Catlass::BYTE_PER_BLK / sizeof(float);
     static constexpr uint32_t kFloatVec = 256 / sizeof(float);
