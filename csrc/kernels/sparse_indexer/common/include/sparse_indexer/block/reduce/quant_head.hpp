@@ -8,14 +8,14 @@
  * head reduce + mask3, matching QLIv2's vector ownership of float scales.
  */
 
-#ifndef FLASHINFER_QUANT_LIGHTNING_INDEXER_ARCH35_BLOCK_REDUCE_QUANT_HEAD_HPP
-#define FLASHINFER_QUANT_LIGHTNING_INDEXER_ARCH35_BLOCK_REDUCE_QUANT_HEAD_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_REDUCE_QUANT_HEAD_HPP
+#define FLASHINFER_SPARSE_INDEXER_BLOCK_REDUCE_QUANT_HEAD_HPP
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
 #include "kernel_operator.h"
 
-#include "sparse_indexer/block/reduce/store_utils.hpp"
+#include "sparse_indexer/block/reduce/direct_workspace_store.hpp"
 #include "sparse_indexer/block/mask/mask_policy.hpp"
 #include "sparse_indexer/foundation/resource/linear_arena.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
@@ -460,4 +460,4 @@ private:
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_QUANT_LIGHTNING_INDEXER_ARCH35_BLOCK_REDUCE_QUANT_HEAD_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_REDUCE_QUANT_HEAD_HPP

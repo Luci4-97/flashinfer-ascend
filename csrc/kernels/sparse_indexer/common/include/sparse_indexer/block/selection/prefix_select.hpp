@@ -3,44 +3,14 @@
  * Licensed under CANN Open Software License Agreement Version 2.0.
  */
 
-#ifndef FLASHINFER_QUANT_LIGHTNING_INDEXER_POLICY_TOPK_PREFIX_LITOPKVF_HPP
-#define FLASHINFER_QUANT_LIGHTNING_INDEXER_POLICY_TOPK_PREFIX_LITOPKVF_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_SELECTION_PREFIX_SELECT_HPP
+#define FLASHINFER_SPARSE_INDEXER_BLOCK_SELECTION_PREFIX_SELECT_HPP
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/detail/macros.hpp"
 #include "sparse_indexer/block/selection/runtime.hpp"
 
 namespace SparseIndexer::Common::Block {
-
-/**
- * Current production TopK policy: RegTensor prefix below topK,
- * LiTopKVF above topK.
- */
-template <class VectorBlock_>
-struct PrefixLiTopKVFPolicy {
-    using VectorBlock = VectorBlock_;
-
-    template <class Scheduler_, class SchedulePolicy_>
-    CATLASS_DEVICE static void Run(Catlass::Arch::Resource<Catlass::Arch::Ascend950>& resource,
-        Scheduler_& scheduler, SelectionRuntimeParams const& selection,
-        AscendC::GlobalTensor<float>& scores, AscendC::GlobalTensor<int32_t> const& outIndices)
-    {
-        AscendC::GlobalTensor<int32_t> dummyOffset;
-        typename SchedulePolicy_::Coord coord{};
-        typename VectorBlock::Params params{};
-        params.topK = selection.topK;
-        params.s2Stride = selection.s2Stride;
-        params.s2Tile = selection.s2Tile;
-        params.hasOutputIdxOffset = selection.hasOutputIdxOffset;
-        VectorBlock topk(resource, scores, outIndices, params, dummyOffset);
-        while (scheduler.GetNextTopKCoord(coord)) {
-            const auto task = SchedulePolicy_::MakeTask(coord, scheduler.source());
-            topk(coord.qStart, coord.qRows, coord.kStart, coord.kRows, coord.localQBegin,
-                task.activeQ, task.activeK, task.residual);
-        }
-    }
-};
-
 
 /**
  * Inline TopK used after one gS1 has finished all S2 work on the same AIV.
@@ -72,4 +42,4 @@ struct InlinePrefixLiTopKVFPolicy {
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_QUANT_LIGHTNING_INDEXER_POLICY_TOPK_PREFIX_LITOPKVF_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_SELECTION_PREFIX_SELECT_HPP

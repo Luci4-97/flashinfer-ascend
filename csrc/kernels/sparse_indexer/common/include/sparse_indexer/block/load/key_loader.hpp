@@ -29,8 +29,6 @@ struct KeyCoord {
 template <class ArchTag_, class BType_>
 class ContiguousKeyLoader {
 public:
-    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
-
     struct Params {};
 
     static constexpr bool kPaged = false;
@@ -87,8 +85,6 @@ private:
 template <class ArchTag_, class BType_>
 class PagedKeyLoader {
 public:
-    static constexpr uint32_t kMaxBatch = SparseIndexer::Common::kMaxBatch;
-
     struct Params {
         uint32_t d{0};
         uint32_t blockSize{0};
@@ -170,7 +166,6 @@ private:
     AscendC::GlobalTensor<DtypeB> gmPages_;
     AscendC::GlobalTensor<int32_t> gmTable_;
     AscendC::GlobalTensor<DtypeB> gmZero_;
-    LayoutB layoutB_{};
     CopyGmToL1B copyGmToL1B_;
     uint32_t blockSize_{0};
     uint32_t maxBlocks_{0};

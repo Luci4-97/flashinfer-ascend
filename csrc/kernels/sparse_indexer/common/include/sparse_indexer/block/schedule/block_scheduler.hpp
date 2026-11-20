@@ -186,23 +186,6 @@ public:
     }
 
     CATLASS_DEVICE
-    bool GetNextCoord(WorkItem& coord)
-    {
-        return Next(coord);
-    }
-
-    CATLASS_DEVICE
-    bool GetNextTopKCoord(WorkItem& coord)
-    {
-        if (nextTopKTask_ >= totalTopKTasks_) {
-            return false;
-        }
-        const uint64_t taskId = nextTopKTask_;
-        nextTopKTask_ += block_num;
-        return SchedulePolicy::FindTopK(source_, policy_, taskId, coord);
-    }
-
-    CATLASS_DEVICE
     RequestRangeSource const& source() const
     {
         return source_;

@@ -3,8 +3,8 @@
  * Licensed under CANN Open Software License Agreement Version 2.0.
  */
 
-#ifndef FLASHINFER_QUANT_LIGHTNING_INDEXER_POLICY_LOAD_PAGED_KEY_HPP
-#define FLASHINFER_QUANT_LIGHTNING_INDEXER_POLICY_LOAD_PAGED_KEY_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_LOAD_PAGED_KEY_HPP
+#define FLASHINFER_SPARSE_INDEXER_BLOCK_LOAD_PAGED_KEY_HPP
 
 #include "sparse_indexer/block/load/key_loader.hpp"
 
@@ -23,4 +23,4 @@ struct PagedKeyLoadPolicy {
 
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_QUANT_LIGHTNING_INDEXER_POLICY_LOAD_PAGED_KEY_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_LOAD_PAGED_KEY_HPP
