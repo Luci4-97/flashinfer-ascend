@@ -16,7 +16,6 @@ template <class Block_>
 struct ReduceRuntimeParams {
     using Block = Block_;
     typename Block::Params block{};
-    uint32_t scoreBuffers{1};
     MaskRuntimeParams mask{};
 };
 

@@ -22,6 +22,7 @@
 #include "sparse_indexer/block/selection/topk_vf.hpp"
 #include "sparse_indexer/foundation/resource/score_buffer.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
+#include "sparse_indexer/foundation/contracts/paged_kv.hpp"
 #include "sparse_indexer/foundation/contracts/policy.hpp"
 #include "sparse_indexer/foundation/resource/current_policy.hpp"
 #include "sparse_indexer/foundation/sync/subblock_barrier.hpp"
@@ -56,6 +57,18 @@ struct CurrentPolicy : SparseIndexer::Common::PolicyBundle<
     using ReduceRuntimeParams = ReduceParams;
     using SelectionRuntimeParams = SelectionParams;
 
+    CATLASS_DEVICE static SparseIndexer::Common::PagedKvGeometry PagedGeometry(
+        __gm__ QuantLightningIndexerTilingData const* tiling)
+    {
+        return {
+            tiling->d,
+            tiling->blockSize,
+            tiling->maxBlocksPerBatch,
+            tiling->numPages,
+            tiling->keyStride0,
+            tiling->kScaleStride0};
+    }
+
     CATLASS_DEVICE static SparseIndexer::Common::ScoreBufferGeometry ScoreGeometry(
         __gm__ QuantLightningIndexerTilingData const* tiling)
     {
@@ -87,11 +100,7 @@ struct CurrentPolicy : SparseIndexer::Common::PolicyBundle<
         __gm__ QuantLightningIndexerTilingData const* tiling)
     {
         MmaParams runtime;
-        runtime.block.keyLoader.d = tiling->d;
-        runtime.block.keyLoader.blockSize = tiling->blockSize;
-        runtime.block.keyLoader.maxBlocksPerBatch = tiling->maxBlocksPerBatch;
-        runtime.block.keyLoader.numPages = tiling->numPages;
-        runtime.block.keyLoader.keyStride0 = tiling->keyStride0;
+        runtime.block.keyLoader.geometry = PagedGeometry(tiling);
         runtime.block.mSplitAlignment = 2U * tiling->n1;
         runtime.problemShape = Catlass::GemmCoord(
             tiling->tq * tiling->n1, tiling->maxSeqLenK, tiling->d);
@@ -113,14 +122,8 @@ struct CurrentPolicy : SparseIndexer::Common::PolicyBundle<
         runtime.block.s2 = tiling->maxSeqLenK;
         runtime.block.s1Tile = tiling->s1Tile;
         runtime.block.s2Tile = tiling->s2Tile;
-        runtime.block.maskMode = tiling->maskMode;
-        runtime.block.cmpRatio = tiling->cmpRatio;
-        runtime.block.blockSize = tiling->blockSize;
-        runtime.block.maxBlocksPerBatch = tiling->maxBlocksPerBatch;
-        runtime.block.numPages = tiling->numPages;
-        runtime.block.kScaleStride0 = tiling->kScaleStride0;
+        runtime.block.geometry = PagedGeometry(tiling);
         runtime.block.scoreBuffers = ScoreBuffers(tiling);
-        runtime.scoreBuffers = runtime.block.scoreBuffers;
         runtime.mask = SparseIndexer::Common::Block::MaskRuntimeParams{
             tiling->maskMode, static_cast<uint32_t>(tiling->cmpRatio), tiling->s2Tile};
         return runtime;

@@ -17,6 +17,8 @@
 
 #include "sparse_indexer/block/reduce/direct_workspace_store.hpp"
 #include "sparse_indexer/block/mask/mask_policy.hpp"
+#include "sparse_indexer/block/mask/runtime.hpp"
+#include "sparse_indexer/foundation/contracts/paged_kv.hpp"
 #include "sparse_indexer/foundation/resource/linear_arena.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
 
@@ -116,12 +118,7 @@ public:
         uint32_t s2{0};
         uint32_t s1Tile{0};
         uint32_t s2Tile{0};
-        int32_t maskMode{3};
-        int32_t cmpRatio{4};
-        uint32_t blockSize{0};
-        uint32_t maxBlocksPerBatch{0};
-        uint32_t numPages{0};
-        uint64_t kScaleStride0{0};
+        SparseIndexer::Common::PagedKvGeometry geometry{};
         uint32_t scoreBuffers{1};
     };
 
@@ -130,7 +127,8 @@ public:
         AscendC::LocalTensor<float>& ubScore, Catlass::Arch::Resource<ArchTag>& resource,
         AscendC::GlobalTensor<float> const& gmW, AscendC::GlobalTensor<float> const& gmQScale,
         AscendC::GlobalTensor<float> const& gmKScale, AscendC::GlobalTensor<int32_t> const& gmBlockTable,
-        AscendC::GlobalTensor<float> const& gmDst, Params const& params)
+        AscendC::GlobalTensor<float> const& gmDst, Params const& params,
+        SparseIndexer::Common::Block::MaskRuntimeParams const& mask)
         : ubScore_(ubScore),
           gmW_(gmW),
           gmQScale_(gmQScale),
@@ -138,6 +136,7 @@ public:
           gmBlockTable_(gmBlockTable),
           gmDst_(gmDst),
           params_(params),
+          mask_(mask),
           n1_(params.n1),
           s2_(params.s2),
           s1Tile_(params.s1Tile),
@@ -229,15 +228,15 @@ public:
         uint32_t localCol = 0;
         while (localCol < fillCols) {
             const uint32_t tok = cacheStart + localCol;
-            const uint32_t block = tok / params_.blockSize;
-            const uint32_t off = tok % params_.blockSize;
-            const uint32_t segCols = AscendC::Std::min(fillCols - localCol, params_.blockSize - off);
+            const uint32_t block = tok / params_.geometry.blockSize;
+            const uint32_t off = tok % params_.geometry.blockSize;
+            const uint32_t segCols = AscendC::Std::min(fillCols - localCol, params_.geometry.blockSize - off);
             int32_t page = -1;
-            if (block < params_.maxBlocksPerBatch) {
+            if (block < params_.geometry.maxBlocksPerBatch) {
                 page = gmBlockTable_.GetValue(
-                    static_cast<int64_t>(batchIdx) * params_.maxBlocksPerBatch + block);
+                    static_cast<int64_t>(batchIdx) * params_.geometry.maxBlocksPerBatch + block);
             }
-            if (page >= 0 && static_cast<uint32_t>(page) < params_.numPages) {
+            if (page >= 0 && static_cast<uint32_t>(page) < params_.geometry.numPages) {
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
                 AscendC::DataCopyExtParams copyIn{
@@ -245,7 +244,7 @@ public:
                 AscendC::DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
                 AscendC::DataCopyPad(
                     ubKScale_[localCol],
-                    gmKScale_[static_cast<uint32_t>(page) * params_.kScaleStride0 + off], copyIn, pad);
+                    gmKScale_[static_cast<uint32_t>(page) * params_.geometry.scaleStride0 + off], copyIn, pad);
             } else {
                 AscendC::Duplicate(ubKScale_[localCol], 0.0f, segCols);
             }
@@ -347,15 +346,15 @@ public:
             uint32_t localCol = 0;
             while (localCol < cols) {
                 const uint32_t tok = s2Start + colBegin + localCol;
-                const uint32_t block = tok / params_.blockSize;
-                const uint32_t off = tok % params_.blockSize;
-                const uint32_t segCols = AscendC::Std::min(cols - localCol, params_.blockSize - off);
+                const uint32_t block = tok / params_.geometry.blockSize;
+                const uint32_t off = tok % params_.geometry.blockSize;
+                const uint32_t segCols = AscendC::Std::min(cols - localCol, params_.geometry.blockSize - off);
                 int32_t page = -1;
-                if (block < params_.maxBlocksPerBatch) {
+                if (block < params_.geometry.maxBlocksPerBatch) {
                     page = gmBlockTable_.GetValue(
-                        static_cast<int64_t>(batchIdx) * params_.maxBlocksPerBatch + block);
+                        static_cast<int64_t>(batchIdx) * params_.geometry.maxBlocksPerBatch + block);
                 }
-                if (page >= 0 && static_cast<uint32_t>(page) < params_.numPages) {
+                if (page >= 0 && static_cast<uint32_t>(page) < params_.geometry.numPages) {
                     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
                     AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
                     AscendC::DataCopyExtParams copyIn{
@@ -363,7 +362,7 @@ public:
                     AscendC::DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
                     AscendC::DataCopyPad(
                         ubKScale_[localCol],
-                        gmKScale_[static_cast<uint32_t>(page) * params_.kScaleStride0 + off], copyIn, pad);
+                        gmKScale_[static_cast<uint32_t>(page) * params_.geometry.scaleStride0 + off], copyIn, pad);
                 } else {
                     AscendC::Duplicate(ubKScale_[localCol], 0.0f, segCols);
                 }
@@ -376,7 +375,7 @@ public:
         const uint32_t scoreElemOffset = scoreBufferIdx * scoreElems_;
         bool integratedRowMask = false;
         if constexpr (kRowSplit) {
-            if (maskActive && params_.maskMode == 3) {
+            if (maskActive && mask_.maskMode == 3) {
                 integratedRowMask = true;
                 uint32_t rowCols[4] = {cols, cols, cols, cols};
                 const uint32_t tileBase = s2Start + colBegin - reqKStart;
@@ -387,7 +386,7 @@ public:
                         rowCols[row] = 0U;
                     } else {
                         const uint32_t visible = SparseIndexer::Common::Block::Mask3VisibleLen(
-                            localQ, qAct, kAct, params_.cmpRatio, residual);
+                            localQ, qAct, kAct, mask_.cmpRatio, residual);
                         rowCols[row] = visible > tileBase
                             ? AscendC::Std::min(cols, visible - tileBase)
                             : 0U;
@@ -416,7 +415,7 @@ public:
             ScaleHeadVF(rows, sourceStride, outStride, cols, kScaleOffset, scoreElemOffset);
             maskPolicy_.Apply(
                 rows, cols, outStride, colBegin, s2Start, requestQStart, qAct, kAct, reqKStart, residual,
-                maskActive, params_.maskMode, params_.cmpRatio);
+                maskActive, mask_.maskMode, mask_.cmpRatio);
         }
         SparseIndexer::Common::Block::DirectWorkspaceStore<float, float>::StoreTile(
             gmDst_[outputRowStart * s2_ + s2Start + colBegin], ubOut_, rows, cols, outStride, s2_,
@@ -440,6 +439,7 @@ private:
     AscendC::GlobalTensor<int32_t> const& gmBlockTable_;
     AscendC::GlobalTensor<float> const& gmDst_;
     Params params_{};
+    SparseIndexer::Common::Block::MaskRuntimeParams mask_{};
     uint32_t n1_{0};
     uint32_t s2_{0};
     uint32_t s1Tile_{0};

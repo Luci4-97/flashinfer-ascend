@@ -36,8 +36,8 @@ struct ReduceSelectEpilogue {
         SparseIndexer::Common::Block::SelectionRuntimeParams const& selection, Scheduler_& scheduler,
         AscendC::GlobalTensor<int32_t> const& outIndices)
     {
-        Block reducer(ubC, resource, gmW, gmQScale, gmKScale, gmBlockTable, scores, runtime.block);
-        const bool doubleBuffered = runtime.scoreBuffers > 1U;
+        Block reducer(ubC, resource, gmW, gmQScale, gmKScale, gmBlockTable, scores, runtime.block, runtime.mask);
+        const bool doubleBuffered = runtime.block.scoreBuffers > 1U;
         SyncPolicy::AivArriveVecReady(0);
         if (doubleBuffered) {
             SyncPolicy::AivArriveVecReady(1);
