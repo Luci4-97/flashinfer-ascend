@@ -224,14 +224,14 @@ public:
     }
 
     CATLASS_DEVICE
-    void LoadKScaleCache(uint32_t cacheStart, uint32_t fillCols, uint32_t batchIdx)
+    void LoadKScaleRange(uint32_t start, uint32_t cols, uint32_t batchIdx, uint32_t dstOffset)
     {
         uint32_t localCol = 0;
-        while (localCol < fillCols) {
-            const uint32_t tok = cacheStart + localCol;
+        while (localCol < cols) {
+            const uint32_t tok = start + localCol;
             const uint32_t block = tok / params_.geometry.blockSize;
             const uint32_t off = tok % params_.geometry.blockSize;
-            const uint32_t segCols = AscendC::Std::min(fillCols - localCol, params_.geometry.blockSize - off);
+            const uint32_t segCols = AscendC::Std::min(cols - localCol, params_.geometry.blockSize - off);
             int32_t page = -1;
             if (block < params_.geometry.maxBlocksPerBatch) {
                 page = gmBlockTable_.GetValue(
@@ -244,10 +244,10 @@ public:
                     1, static_cast<uint32_t>(segCols * sizeof(float)), 0, 0, 0};
                 AscendC::DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
                 AscendC::DataCopyPad(
-                    ubKScale_[localCol],
+                    ubKScale_[dstOffset + localCol],
                     gmKScale_[static_cast<uint32_t>(page) * params_.geometry.scaleStride0 + off], copyIn, pad);
             } else {
-                AscendC::Duplicate(ubKScale_[localCol], 0.0f, segCols);
+                AscendC::Duplicate(ubKScale_[dstOffset + localCol], 0.0f, segCols);
             }
             localCol += segCols;
         }
@@ -256,6 +256,12 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    void LoadKScaleCache(uint32_t cacheStart, uint32_t fillCols, uint32_t batchIdx)
+    {
+        LoadKScaleRange(cacheStart, fillCols, batchIdx, 0);
     }
 
     CATLASS_DEVICE void operator()(
@@ -344,34 +350,7 @@ public:
             }
             kScaleOffset = tileStart - cacheStart;
         } else {
-            uint32_t localCol = 0;
-            while (localCol < cols) {
-                const uint32_t tok = s2Start + colBegin + localCol;
-                const uint32_t block = tok / params_.geometry.blockSize;
-                const uint32_t off = tok % params_.geometry.blockSize;
-                const uint32_t segCols = AscendC::Std::min(cols - localCol, params_.geometry.blockSize - off);
-                int32_t page = -1;
-                if (block < params_.geometry.maxBlocksPerBatch) {
-                    page = gmBlockTable_.GetValue(
-                        static_cast<int64_t>(batchIdx) * params_.geometry.maxBlocksPerBatch + block);
-                }
-                if (page >= 0 && static_cast<uint32_t>(page) < params_.geometry.numPages) {
-                    AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
-                    AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
-                    AscendC::DataCopyExtParams copyIn{
-                        1, static_cast<uint32_t>(segCols * sizeof(float)), 0, 0, 0};
-                    AscendC::DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
-                    AscendC::DataCopyPad(
-                        ubKScale_[localCol],
-                        gmKScale_[static_cast<uint32_t>(page) * params_.geometry.scaleStride0 + off], copyIn, pad);
-                } else {
-                    AscendC::Duplicate(ubKScale_[localCol], 0.0f, segCols);
-                }
-                localCol += segCols;
-            }
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-            AscendC::PipeBarrier<PIPE_V>();
+            LoadKScaleRange(s2Start + colBegin, cols, batchIdx, 0);
         }
         const uint32_t scoreElemOffset = scoreBufferIdx * scoreElems_;
         bool integratedRowMask = false;
