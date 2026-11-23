@@ -8,8 +8,8 @@
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/detail/macros.hpp"
-#include "sparse_indexer/block/mask/visible_coord.hpp"
-#include "sparse_indexer/block/mma/runtime.hpp"
+#include "sparse_indexer/foundation/primitive/mask.hpp"
+#include "sparse_indexer/block/block_qk_mmad.hpp"
 
 namespace SparseIndexer::Common::Pipeline {
 

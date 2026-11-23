@@ -6,7 +6,7 @@
 #ifndef FLASHINFER_QUANT_LIGHTNING_INDEXER_ARCH35_TASK_H
 #define FLASHINFER_QUANT_LIGHTNING_INDEXER_ARCH35_TASK_H
 
-#include "sparse_indexer/block/schedule/block_scheduler.hpp"
+#include "sparse_indexer/block/block_schedule.hpp"
 #include "quant_lightning_indexer_source.h"
 
 namespace QuantLightningIndexerKernelDetail {

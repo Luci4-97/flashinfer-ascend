@@ -1,24 +1,28 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * Licensed under CANN Open Software License Agreement Version 2.0.
- *
- * Vector radix-select TopK ported from ops-transformer QLIv2. The kernel emits
- * QLIv2's threshold/filter order, not a score-descending order.
  */
 
-#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_TOPK_VF_HPP
-#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_TOPK_VF_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_TOPK_HPP
+#define FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_TOPK_HPP
 
+#include "kernel_operator.h"
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
-#include "kernel_operator.h"
 
-#include "sparse_indexer/foundation/resource/linear_arena.hpp"
-#include "sparse_indexer/block/mask/mask_utils.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
-#include "topk_vf/vf_topk_16_gather_quant_v2.h"
+#include "sparse_indexer/foundation/primitive/mask.hpp"
+#include "sparse_indexer/foundation/primitive/topk_vf.hpp"
+#include "sparse_indexer/foundation/resource/linear_arena.hpp"
 
 namespace SparseIndexer::Common::Block {
+
+struct SelectionRuntimeParams {
+    uint32_t topK{0};
+    uint32_t s2Stride{0};
+    uint32_t s2Tile{0};
+    bool hasOutputIdxOffset{false};
+};
 
 namespace Reg = AscendC::Reg;
 using AscendC::CMPMODE;
@@ -92,7 +96,7 @@ __simd_vf__ void FinalizeIndexVF(__ubuf__ int32_t *out, __ubuf__ uint16_t *indic
 }
 
 template <class DtypeScore_, class DtypeOut_, bool LocalRows_ = false>
-class BlockTopKVector {
+class BlockTopK {
 public:
     struct Params {
         uint32_t topK{0};
@@ -104,11 +108,12 @@ public:
     using DtypeScore = DtypeScore_;
     using DtypeOut = DtypeOut_;
     using ArchTag = Catlass::Arch::Ascend950;
+    using VectorBlock = BlockTopK;
 
     static constexpr uint32_t kSplitS1 = LocalRows_ ? 1U : 2U;
     static constexpr uint32_t kFloatBlock = Catlass::BYTE_PER_BLK / sizeof(DtypeScore);
 
-    CATLASS_DEVICE BlockTopKVector(Catlass::Arch::Resource<ArchTag>& resource,
+    CATLASS_DEVICE BlockTopK(Catlass::Arch::Resource<ArchTag>& resource,
         AscendC::GlobalTensor<DtypeScore> const& workspace, AscendC::GlobalTensor<DtypeOut> const& outIndices,
         Params const& params, AscendC::GlobalTensor<int32_t> const& outputIdxOffset)
         : gmScores_(workspace),
@@ -147,6 +152,24 @@ public:
             return 0;
         }
         return AscendC::Std::min(kLen, static_cast<uint32_t>(raw / 4));
+    }
+
+    CATLASS_DEVICE static void RunLocal(Catlass::Arch::Resource<ArchTag>& resource,
+        SelectionRuntimeParams const& selection, AscendC::GlobalTensor<float>& scores,
+        AscendC::GlobalTensor<int32_t> const& outIndices, uint32_t s1Start, uint32_t rows,
+        uint32_t kStart, uint32_t kLen, uint32_t localQStart, uint32_t qLen, int32_t residual)
+    {
+        if (rows == 0) {
+            return;
+        }
+        AscendC::GlobalTensor<int32_t> dummyOffset;
+        typename BlockTopK::Params params{};
+        params.topK = selection.topK;
+        params.s2Stride = selection.s2Stride;
+        params.s2Tile = selection.s2Tile;
+        params.hasOutputIdxOffset = selection.hasOutputIdxOffset;
+        BlockTopK topk(resource, scores, outIndices, params, dummyOffset);
+        topk(s1Start, rows, kStart, kLen, localQStart, qLen, kLen, residual);
     }
 
     CATLASS_DEVICE void operator()(uint32_t s1Start, uint32_t actualS1, uint32_t kStart, uint32_t kLen,
@@ -252,6 +275,8 @@ private:
     uint32_t topKAlign_{0};
 };
 
+
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_BLOCK_TOPK_VF_HPP
+
+#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_TOPK_HPP

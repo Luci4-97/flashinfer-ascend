@@ -8,9 +8,9 @@
 
 #include "catlass/arch/resource.hpp"
 #include "catlass/detail/macros.hpp"
-#include "sparse_indexer/block/mask/visible_coord.hpp"
-#include "sparse_indexer/block/reduce/runtime.hpp"
-#include "sparse_indexer/block/selection/runtime.hpp"
+#include "sparse_indexer/foundation/primitive/mask.hpp"
+#include "sparse_indexer/block/block_reduce_quant_head.hpp"
+#include "sparse_indexer/block/block_topk.hpp"
 
 namespace SparseIndexer::Common::Pipeline {
 

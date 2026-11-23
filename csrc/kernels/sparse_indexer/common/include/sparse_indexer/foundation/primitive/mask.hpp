@@ -3,18 +3,57 @@
  * Licensed under CANN Open Software License Agreement Version 2.0.
  */
 
-#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_MASK_POLICY_HPP
-#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_MASK_POLICY_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_FOUNDATION_PRIMITIVE_MASK_HPP
+#define FLASHINFER_SPARSE_INDEXER_FOUNDATION_PRIMITIVE_MASK_HPP
 
 #include <cstdint>
 
-#include "catlass/catlass.hpp"
 #include "kernel_operator.h"
-
-#include "sparse_indexer/block/mask/mask_utils.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/detail/macros.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
+#include "sparse_indexer/foundation/contracts/problem.hpp"
 
 namespace SparseIndexer::Common::Block {
+
+struct MaskRuntimeParams {
+    int32_t maskMode{0};
+    uint32_t cmpRatio{1};
+    uint32_t s2Tile{1};
+};
+
+/// IEEE-754 float -inf bit pattern (shared by Reduce mask writes and TopK filters).
+inline constexpr uint32_t kFloatNegInfBits = 0xFF800000U;
+
+CATLASS_DEVICE bool IsNegInfFloat(float v)
+{
+    union {
+        float f;
+        uint32_t u;
+    } bits;
+    bits.f = v;
+    return bits.u == kFloatNegInfBits;
+}
+
+/**
+ * LI V2 create_mask visible column count for local Q row ``localQ``.
+ * ``qAct`` / ``kAct`` are seqused lengths (or full request lengths when seqused absent).
+ */
+CATLASS_DEVICE uint32_t Mask3VisibleLen(
+    uint32_t localQ, uint32_t qAct, uint32_t kAct, int32_t cmpRatio, int32_t residual)
+{
+    if (kAct == 0) {
+        return 0;
+    }
+    const int32_t ratio = cmpRatio <= 0 ? 1 : cmpRatio;
+    const int32_t tmp = static_cast<int32_t>(kAct) * ratio + residual - static_cast<int32_t>(qAct);
+    const int32_t numer = tmp + static_cast<int32_t>(localQ) + 1;
+    if (numer < 0) {
+        return 0;
+    }
+    const uint32_t vis = static_cast<uint32_t>(numer / ratio);
+    return vis < kAct ? vis : kAct;
+}
 
 template <class DtypeScore>
 class NoMaskPolicy {
@@ -100,6 +139,24 @@ private:
     AscendC::LocalTensor<DtypeScore> const& ubTmp_;
 };
 
+/**
+ * Causal mask3 only needs the prefix visible to the last row of a gS1 tile.
+ * Keep one tile for an empty-visible request so the CV hand-off stays paired.
+ */
+CATLASS_DEVICE inline WorkItem VisibleCoord(MaskRuntimeParams const& mask, WorkItem const& coord,
+    uint32_t activeQ, uint32_t activeK, int32_t residual)
+{
+    auto visible = coord;
+    if (mask.maskMode != 3 || coord.qRows == 0U) {
+        return visible;
+    }
+    const uint32_t lastLocalQ = coord.localQBegin + coord.qRows - 1U;
+    const uint32_t visibleK = Mask3VisibleLen(lastLocalQ, activeQ, activeK, mask.cmpRatio, residual);
+    visible.kRows = AscendC::Std::max(visibleK, AscendC::Std::min(coord.kRows, mask.s2Tile));
+    return visible;
+}
+
+
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_MASK_POLICY_HPP
+#endif // FLASHINFER_SPARSE_INDEXER_FOUNDATION_PRIMITIVE_MASK_HPP

@@ -1,22 +1,24 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Licensed under CANN Open Software License Agreement Version 2.0.
  */
 
-#ifndef FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_KEY_LOADER_HPP
-#define FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_KEY_LOADER_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_KEY_LOAD_HPP
+#define FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_KEY_LOAD_HPP
 
+#include <type_traits>
+
+#include "kernel_operator.h"
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/gemm/tile/tile_copy.hpp"
 #include "catlass/matrix_coord.hpp"
-#include "kernel_operator.h"
 
 #include "sparse_indexer/foundation/contracts/common.hpp"
 #include "sparse_indexer/foundation/contracts/paged_kv.hpp"
 
 namespace SparseIndexer::Common::Block {
 
-/// Address data resolved by BlockScheduler for one request-local K tile.
+/// Address data resolved by BlockSchedule for one request-local K tile.
 struct KeyCoord {
     uint32_t globalNStart{0};
     uint32_t requestNStart{0};
@@ -175,6 +177,18 @@ private:
     uint64_t keyStride0_{0};
 };
 
+/// Compile-time cache-side policy used by the QK MMAD block.
+template <class Dtype_, bool Paged_>
+struct BlockKeyLoad {
+    using Dtype = Dtype_;
+    using BType = Catlass::Gemm::GemmType<Dtype, Catlass::layout::ColumnMajor>;
+    using Loader = std::conditional_t<Paged_,
+        PagedKeyLoader<Catlass::Arch::Ascend950, BType>,
+        ContiguousKeyLoader<Catlass::Arch::Ascend950, BType>>;
+    static constexpr bool kPaged = Paged_;
+};
+
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_SPARSE_INDEXER_COMMON_BLOCK_KEY_LOADER_HPP
+
+#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_KEY_LOAD_HPP

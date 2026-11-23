@@ -1,28 +1,52 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * Licensed under CANN Open Software License Agreement Version 2.0.
- *
- * Vector reduce for QLI quant_mode=1:
- *   score[s2] = k_scale[s2] * sum_h (w[h] * q_scale[h]) * ReLU(Q @ K^T)[h, s2]
- * Cube produces raw FP8 matmul into shared UB; this block owns scales + ReLU +
- * head reduce + mask3, matching QLIv2's vector ownership of float scales.
  */
 
-#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_REDUCE_QUANT_HEAD_HPP
-#define FLASHINFER_SPARSE_INDEXER_BLOCK_REDUCE_QUANT_HEAD_HPP
+#ifndef FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_REDUCE_QUANT_HEAD_HPP
+#define FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_REDUCE_QUANT_HEAD_HPP
 
+#include <cstdint>
+#include <type_traits>
+
+#include "kernel_operator.h"
 #include "catlass/arch/resource.hpp"
 #include "catlass/catlass.hpp"
-#include "kernel_operator.h"
 
-#include "sparse_indexer/block/reduce/direct_workspace_store.hpp"
-#include "sparse_indexer/block/mask/mask_policy.hpp"
-#include "sparse_indexer/block/mask/runtime.hpp"
-#include "sparse_indexer/foundation/contracts/paged_kv.hpp"
-#include "sparse_indexer/foundation/resource/linear_arena.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
+#include "sparse_indexer/foundation/contracts/paged_kv.hpp"
+#include "sparse_indexer/foundation/primitive/mask.hpp"
+#include "sparse_indexer/foundation/resource/linear_arena.hpp"
 
 namespace SparseIndexer::Common::Block {
+
+/// Copy a UB tile to GM. A different destination type supplies its own store.
+template <class DtypeDst_, class DtypeScore_>
+struct DirectWorkspaceStore {
+    static_assert(std::is_same_v<DtypeDst_, DtypeScore_>, "DirectWorkspaceStore requires matching element types");
+
+    using DtypeDst = DtypeDst_;
+    using DtypeScore = DtypeScore_;
+
+    /// Write rows of a packed UB tile. srcRowStride / dstRowStride are element counts.
+    CATLASS_DEVICE static void StoreTile(
+        AscendC::GlobalTensor<DtypeDst> gmDst, AscendC::LocalTensor<DtypeScore>& ubTile, uint32_t rows, uint32_t cols,
+        uint32_t srcRowStride, uint32_t dstRowStride, uint32_t eventId = EVENT_ID0)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventId);
+        uint32_t copyBytes = cols * sizeof(DtypeDst);
+        uint32_t srcRowBytes = srcRowStride * sizeof(DtypeDst);
+        uint32_t copyAligned = (copyBytes + Catlass::BYTE_PER_BLK - 1) / Catlass::BYTE_PER_BLK * Catlass::BYTE_PER_BLK;
+        uint32_t srcStrideBlocks = (srcRowBytes - copyAligned) / Catlass::BYTE_PER_BLK;
+        uint32_t dstStrideBytes = (dstRowStride - cols) * sizeof(DtypeDst);
+        AscendC::DataCopyExtParams params(rows, copyBytes, srcStrideBlocks, dstStrideBytes, 0);
+        AscendC::DataCopyPad(gmDst, ubTile, params);
+        // The caller defers this event until the same ping-pong buffer is
+        // reused (or until TopK takes over UB).
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
+    }
+};
 
 namespace Reg = AscendC::Reg;
 
@@ -437,6 +461,13 @@ private:
     MaskPolicy maskPolicy_;
 };
 
+template <class Block_>
+struct ReduceRuntimeParams {
+    using Block = Block_;
+    typename Block::Params block{};
+};
+
 } // namespace SparseIndexer::Common::Block
 
-#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_REDUCE_QUANT_HEAD_HPP
+
+#endif // FLASHINFER_SPARSE_INDEXER_BLOCK_BLOCK_REDUCE_QUANT_HEAD_HPP

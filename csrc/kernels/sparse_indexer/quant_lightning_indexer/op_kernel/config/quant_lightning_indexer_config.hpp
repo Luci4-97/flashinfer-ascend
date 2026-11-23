@@ -9,16 +9,12 @@
 #include "arch35/quant_lightning_indexer_source.h"
 #include "arch35/quant_lightning_indexer_task.h"
 #include "quant_lightning_indexer_tiling_data.h"
-#include "sparse_indexer/block/load/paged_key.hpp"
-#include "sparse_indexer/block/mask/runtime.hpp"
-#include "sparse_indexer/block/mma/runtime.hpp"
-#include "sparse_indexer/block/mma/split_m.hpp"
-#include "sparse_indexer/block/reduce/quant_head.hpp"
-#include "sparse_indexer/block/reduce/runtime.hpp"
-#include "sparse_indexer/block/schedule/static_gsa1.hpp"
-#include "sparse_indexer/block/selection/prefix_select.hpp"
-#include "sparse_indexer/block/selection/runtime.hpp"
-#include "sparse_indexer/block/selection/topk_vf.hpp"
+#include "sparse_indexer/block/block_key_load.hpp"
+#include "sparse_indexer/foundation/primitive/mask.hpp"
+#include "sparse_indexer/block/block_qk_mmad.hpp"
+#include "sparse_indexer/block/block_reduce_quant_head.hpp"
+#include "sparse_indexer/block/block_schedule.hpp"
+#include "sparse_indexer/block/block_topk.hpp"
 #include "sparse_indexer/foundation/resource/score_buffer.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
 #include "sparse_indexer/foundation/contracts/paged_kv.hpp"
@@ -29,7 +25,7 @@
 namespace SparseIndexer::QuantLightningIndexer::Config {
 
 using QkDtype = fp8_e4m3fn_t;
-using KeyLoad = SparseIndexer::Common::Block::PagedKeyLoadPolicy<QkDtype>;
+using KeyLoad = SparseIndexer::Common::Block::BlockKeyLoad<QkDtype, true>;
 using Sync = SparseIndexer::Common::SubblockPairBlockBarrierSyncPolicy;
 using Resource = SparseIndexer::Common::CurrentResourcePolicy<Catlass::Arch::Ascend950>;
 
@@ -37,12 +33,12 @@ using Schedule = SparseIndexer::Common::Block::StaticGSA1SchedulePolicy<
     QuantLightningIndexerKernelDetail::QuantLightningIndexerRequestSource,
     QuantLightningIndexerKernelDetail::QuantLightningIndexerTaskFactory>;
 
-using Mmad = SparseIndexer::Common::Block::SplitMMmadPolicy<QkDtype, KeyLoad>;
+using Mmad = SparseIndexer::Common::Block::BlockQkMmad<QkDtype, KeyLoad,
+    Catlass::Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
 using QuantHead = SparseIndexer::Common::Block::BlockReduceQuantHead<
     SparseIndexer::Common::Block::LiV2MaskPolicy<float>, true>;
 using Reduce = QuantHead;
-using Selection = SparseIndexer::Common::Block::InlinePrefixLiTopKVFPolicy<
-    SparseIndexer::Common::Block::BlockTopKVector<float, int32_t, true>>;
+using Selection = SparseIndexer::Common::Block::BlockTopK<float, int32_t, true>;
 
 using ScheduleParams = typename Schedule::Params;
 using MmaParams = SparseIndexer::Common::Block::MmaRuntimeParams<typename Mmad::Block>;
