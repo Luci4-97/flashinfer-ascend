@@ -26,7 +26,7 @@
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"
 
-#include "sparse_indexer/block/load/key_loader.hpp"
+#include "sparse_indexer/block/mma/key_ring.hpp"
 #include "sparse_indexer/foundation/contracts/common.hpp"
 
 namespace SparseIndexer::Common::Block {
@@ -48,6 +48,7 @@ public:
     using DtypeA = DtypeA_;
     using DtypeB = DtypeB_;
     using KeyLoader = KeyLoader_;
+    using KeyRing = SparseIndexer::Common::Block::KeyRing<DtypeB, KeyLoader_>;
     using DtypeAccum = typename Catlass::Gemm::helper::ElementAccumulatorSelector<DtypeA, DtypeB>::ElementAccumulator;
     using DtypeC = DtypeAccum;
 
@@ -89,7 +90,6 @@ public:
     {
         layoutA_ = LayoutA::template MakeLayout<DtypeA>(problemShape_.m(), problemShape_.k());
         layoutB_ = LayoutB::template MakeLayout<DtypeB>(problemShape_.k(), problemShape_.n());
-        keyLoader_.Setup(gmB_, layoutB_, params.keyLoader, gmTable, gmZero);
 
         uint32_t kByA = ArchTag::L0A_SIZE / sizeof(DtypeA) / tileShape_.m();
         uint32_t kByB = ArchTag::L0B_SIZE / sizeof(DtypeB) / tileShape_.n();
@@ -101,19 +101,16 @@ public:
         keyPartElems_ = kPart_ * alignedNMax;
         keyBufElems_ = SparseIndexer::Common::CeilDiv(tileShape_.k(), kPart_) * keyPartElems_;
         l1A_ = resource_.l1Buf.template GetBufferByByte<DtypeA>(0);
-        l1B_ = resource_.l1Buf.template GetBufferByByte<DtypeB>(l1ABytes);
         l0A_ = resource_.l0ABuf.template GetBufferByByte<DtypeA>(0);
         l0B_ = resource_.l0BBuf.template GetBufferByByte<DtypeB>(0);
         l0C_ = resource_.l0CBuf.template GetBufferByByte<DtypeAccum>(0);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
+        keyRing_.Setup(
+            resource_.l1Buf.template GetBufferByByte<DtypeB>(l1ABytes), gmB_, layoutB_,
+            problemShape_.k(), kPart_, keyPartElems_, keyBufElems_, params.keyLoader, gmTable, gmZero);
         // Q is invariant across all S2 tiles of one gS1 task. A separate
         // event protects the optional L1A cache from the next task's reload.
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        // Three independent L1B buffers keep the next key transfer in flight
-        // while the current tile is consumed by MTE1/cube.
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
     }
@@ -121,9 +118,6 @@ public:
     CATLASS_DEVICE
     ~BlockMmad()
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
@@ -161,30 +155,13 @@ public:
         ubOut_ = ubC_[elementOffset];
     }
 
-    CATLASS_DEVICE
-    static constexpr uint32_t KeyEvent(uint32_t bufferIdx)
-    {
-        return bufferIdx == 0U ? EVENT_ID0 : (bufferIdx == 1U ? EVENT_ID2 : EVENT_ID3);
-    }
-
     /// Start the GM->L1 transfer for one S2 tile. The caller must keep at most
     /// three tiles in flight so the ring buffer cannot overtake MTE1.
     CATLASS_DEVICE
     void PrefetchKey(uint32_t bufferIdx, KeyCoord const& keyCoord, uint32_t actualN)
     {
-        const uint32_t kTileCount = SparseIndexer::Common::CeilDiv(problemShape_.k(), kPart_);
         const uint32_t alignedN = SparseIndexer::Common::AlignUp(actualN, L1BAlign::N_ALIGNED);
-        auto layoutBInL1 = Catlass::layout::nZ::template MakeLayout<DtypeB>(kPart_, alignedN);
-        const uint32_t eventId = KeyEvent(bufferIdx);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(eventId);
-        for (uint32_t kIdx = 0; kIdx < kTileCount; ++kIdx) {
-            const uint32_t kStart = kIdx * kPart_;
-            const uint32_t actualK = AscendC::Std::min(kPart_, problemShape_.k() - kStart);
-            keyLoader_.Load(
-                l1B_[bufferIdx * keyBufElems_ + kIdx * keyPartElems_],
-                layoutBInL1, kStart, actualK, keyCoord, actualN);
-        }
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(eventId);
+        keyRing_.Prefetch(bufferIdx, keyCoord, actualN, alignedN);
     }
 
     CATLASS_DEVICE
@@ -195,10 +172,8 @@ public:
         const uint32_t alignedN = SparseIndexer::Common::AlignUp(actualN, L1BAlign::N_ALIGNED);
         auto layoutAInL1 = Catlass::layout::zN::template MakeLayout<DtypeA>(alignedM, kPart_);
         auto layoutBInL1 = Catlass::layout::nZ::template MakeLayout<DtypeB>(kPart_, alignedN);
-        const uint32_t keyEventId = KeyEvent(keyBufferIdx);
-
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(keyEventId);
+        keyRing_.WaitReady(keyBufferIdx);
         for (uint32_t kIdx = 0; kIdx < kTileCount; ++kIdx) {
             const uint32_t kStart = kIdx * kPart_;
             const uint32_t actualK = AscendC::Std::min(kPart_, problemShape_.k() - kStart);
@@ -223,11 +198,10 @@ public:
             if (qCacheValid_) {
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
             }
-            copyL1ToL0B_(
-                l0B_, l1B_[keyBufferIdx * keyBufElems_ + kIdx * keyPartElems_], layoutBInL1, layoutBInL1);
+            copyL1ToL0B_(l0B_, keyRing_.Buffer(keyBufferIdx, kIdx), layoutBInL1, layoutBInL1);
             if (kIdx + 1U == kTileCount) {
                 // L1B can be refilled as soon as the tile has reached L0B.
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(keyEventId);
+                keyRing_.Release(keyBufferIdx);
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
 
@@ -310,12 +284,11 @@ private:
     AscendC::LocalTensor<DtypeC> ubC_;
     AscendC::LocalTensor<DtypeC> ubOut_;
     AscendC::LocalTensor<DtypeA> l1A_;
-    AscendC::LocalTensor<DtypeB> l1B_;
     AscendC::LocalTensor<DtypeA> l0A_;
     AscendC::LocalTensor<DtypeB> l0B_;
     AscendC::LocalTensor<DtypeAccum> l0C_;
     CopyGmToL1A copyGmToL1A_;
-    KeyLoader keyLoader_;
+    KeyRing keyRing_;
     CopyL1ToL0A copyL1ToL0A_;
     CopyL1ToL0B copyL1ToL0B_;
     CopyL0CToUb copyL0CToUb_;
