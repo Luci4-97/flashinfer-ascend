@@ -87,7 +87,11 @@ template <class ArchTag_, class BType_>
 class PagedKeyLoader {
 public:
     struct Params {
-        SparseIndexer::Common::PagedKvGeometry geometry{};
+        uint32_t d{0};
+        uint32_t blockSize{0};
+        uint32_t maxBlocksPerBatch{0};
+        uint32_t numPages{0};
+        uint64_t keyStride0{0};
     };
 
     static constexpr bool kPaged = true;
@@ -108,12 +112,12 @@ public:
         AscendC::GlobalTensor<DtypeB> const& gmZero)
     {
         gmPages_ = gmPages;
-        blockSize_ = params.geometry.blockSize;
-        maxBlocks_ = params.geometry.maxBlocksPerBatch;
-        numPages_ = params.geometry.numPages;
-        d_ = params.geometry.d;
-        keyStride0_ = params.geometry.keyStride0 != 0
-            ? params.geometry.keyStride0
+        blockSize_ = params.blockSize;
+        maxBlocks_ = params.maxBlocksPerBatch;
+        numPages_ = params.numPages;
+        d_ = params.d;
+        keyStride0_ = params.keyStride0 != 0
+            ? params.keyStride0
             : static_cast<uint64_t>(blockSize_) * d_;
         gmTable_ = gmTable;
         gmZero_ = gmZero;

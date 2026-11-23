@@ -16,7 +16,6 @@ template <class Block_>
 struct ReduceRuntimeParams {
     using Block = Block_;
     typename Block::Params block{};
-    MaskRuntimeParams mask{};
 };
 
 } // namespace SparseIndexer::Common::Block

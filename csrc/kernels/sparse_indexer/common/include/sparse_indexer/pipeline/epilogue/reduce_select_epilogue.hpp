@@ -36,7 +36,7 @@ struct ReduceSelectEpilogue {
         SparseIndexer::Common::Block::SelectionRuntimeParams const& selection, Scheduler_& scheduler,
         AscendC::GlobalTensor<int32_t> const& outIndices)
     {
-        Block reducer(ubC, resource, gmW, gmQScale, gmKScale, gmBlockTable, scores, runtime.block, runtime.mask);
+        Block reducer(ubC, resource, gmW, gmQScale, gmKScale, gmBlockTable, scores, runtime.block);
         const bool doubleBuffered = runtime.block.scoreBuffers > 1U;
         SyncPolicy::AivArriveVecReady(0);
         if (doubleBuffered) {
@@ -46,7 +46,7 @@ struct ReduceSelectEpilogue {
         while (scheduler.Next(coord)) {
             const auto task = SchedulePolicy::MakeTask(coord, scheduler.source());
             const auto visibleCoord = SparseIndexer::Common::Block::VisibleCoord(
-                runtime.mask, coord, task.activeQ, task.activeK, task.residual);
+                runtime.block.mask, coord, task.activeQ, task.activeK, task.residual);
             const uint32_t s2Tiles = SchedulePolicy::CountS2Tiles(visibleCoord, scheduler.policy());
             for (uint32_t s2Idx = 0; s2Idx < s2Tiles; ++s2Idx) {
                 const auto tile = SchedulePolicy::MakeS2Coord(visibleCoord, s2Idx, scheduler.policy());

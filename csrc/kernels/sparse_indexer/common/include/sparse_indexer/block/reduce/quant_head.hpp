@@ -106,6 +106,7 @@ public:
     using DtypeDst = float;
     using ArchTag = Catlass::Arch::Ascend950;
     using MaskPolicy = MaskPolicy_;
+    using Block = BlockReduceQuantHead;
 
     static constexpr uint32_t kFloatBlock = Catlass::BYTE_PER_BLK / sizeof(float);
     static constexpr uint32_t kFloatVec = 256 / sizeof(float);
@@ -118,7 +119,11 @@ public:
         uint32_t s2{0};
         uint32_t s1Tile{0};
         uint32_t s2Tile{0};
-        SparseIndexer::Common::PagedKvGeometry geometry{};
+        uint32_t blockSize{0};
+        uint32_t maxBlocksPerBatch{0};
+        uint32_t numPages{0};
+        uint64_t kScaleStride0{0};
+        SparseIndexer::Common::Block::MaskRuntimeParams mask{};
         uint32_t scoreBuffers{1};
     };
 
@@ -127,8 +132,7 @@ public:
         AscendC::LocalTensor<float>& ubScore, Catlass::Arch::Resource<ArchTag>& resource,
         AscendC::GlobalTensor<float> const& gmW, AscendC::GlobalTensor<float> const& gmQScale,
         AscendC::GlobalTensor<float> const& gmKScale, AscendC::GlobalTensor<int32_t> const& gmBlockTable,
-        AscendC::GlobalTensor<float> const& gmDst, Params const& params,
-        SparseIndexer::Common::Block::MaskRuntimeParams const& mask)
+        AscendC::GlobalTensor<float> const& gmDst, Params const& params)
         : ubScore_(ubScore),
           gmW_(gmW),
           gmQScale_(gmQScale),
@@ -136,7 +140,6 @@ public:
           gmBlockTable_(gmBlockTable),
           gmDst_(gmDst),
           params_(params),
-          mask_(mask),
           n1_(params.n1),
           s2_(params.s2),
           s1Tile_(params.s1Tile),
@@ -223,38 +226,42 @@ public:
     }
 
     CATLASS_DEVICE
-    void LoadKScaleCache(uint32_t cacheStart, uint32_t fillCols, uint32_t batchIdx)
+    void LoadKScaleRange(uint32_t start, uint32_t cols, uint32_t batchIdx, uint32_t dstOffset)
     {
         uint32_t localCol = 0;
-        while (localCol < fillCols) {
-            const uint32_t tok = cacheStart + localCol;
-            const uint32_t block = tok / params_.geometry.blockSize;
-            const uint32_t off = tok % params_.geometry.blockSize;
-            const uint32_t segCols = AscendC::Std::min(fillCols - localCol, params_.geometry.blockSize - off);
+        while (localCol < cols) {
+            const uint32_t tok = start + localCol;
+            const uint32_t block = tok / params_.blockSize;
+            const uint32_t off = tok % params_.blockSize;
+            const uint32_t segCols = AscendC::Std::min(cols - localCol, params_.blockSize - off);
             int32_t page = -1;
-            if (block < params_.geometry.maxBlocksPerBatch) {
+            if (block < params_.maxBlocksPerBatch) {
                 page = gmBlockTable_.GetValue(
-                    static_cast<int64_t>(batchIdx) * params_.geometry.maxBlocksPerBatch + block);
+                    static_cast<int64_t>(batchIdx) * params_.maxBlocksPerBatch + block);
             }
-            if (page >= 0 && static_cast<uint32_t>(page) < params_.geometry.numPages) {
+            if (page >= 0 && static_cast<uint32_t>(page) < params_.numPages) {
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
                 AscendC::DataCopyExtParams copyIn{
                     1, static_cast<uint32_t>(segCols * sizeof(float)), 0, 0, 0};
                 AscendC::DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
                 AscendC::DataCopyPad(
-                    ubKScale_[localCol],
-                    gmKScale_[static_cast<uint32_t>(page) * params_.geometry.scaleStride0 + off], copyIn, pad);
+                    ubKScale_[dstOffset + localCol],
+                    gmKScale_[static_cast<uint32_t>(page) * params_.kScaleStride0 + off], copyIn, pad);
             } else {
-                AscendC::Duplicate(ubKScale_[localCol], 0.0f, segCols);
+                AscendC::Duplicate(ubKScale_[dstOffset + localCol], 0.0f, segCols);
             }
             localCol += segCols;
         }
-        // Columns beyond the visible range are masked to -inf below, so the
-        // partial tail does not need a second, variably-sized vector fill.
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
         AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    void LoadKScaleCache(uint32_t cacheStart, uint32_t fillCols, uint32_t batchIdx)
+    {
+        LoadKScaleRange(cacheStart, fillCols, batchIdx, 0);
     }
 
     CATLASS_DEVICE void operator()(
@@ -343,39 +350,12 @@ public:
             }
             kScaleOffset = tileStart - cacheStart;
         } else {
-            uint32_t localCol = 0;
-            while (localCol < cols) {
-                const uint32_t tok = s2Start + colBegin + localCol;
-                const uint32_t block = tok / params_.geometry.blockSize;
-                const uint32_t off = tok % params_.geometry.blockSize;
-                const uint32_t segCols = AscendC::Std::min(cols - localCol, params_.geometry.blockSize - off);
-                int32_t page = -1;
-                if (block < params_.geometry.maxBlocksPerBatch) {
-                    page = gmBlockTable_.GetValue(
-                        static_cast<int64_t>(batchIdx) * params_.geometry.maxBlocksPerBatch + block);
-                }
-                if (page >= 0 && static_cast<uint32_t>(page) < params_.geometry.numPages) {
-                    AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
-                    AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID1);
-                    AscendC::DataCopyExtParams copyIn{
-                        1, static_cast<uint32_t>(segCols * sizeof(float)), 0, 0, 0};
-                    AscendC::DataCopyPadExtParams<float> pad{false, 0, 0, 0.0f};
-                    AscendC::DataCopyPad(
-                        ubKScale_[localCol],
-                        gmKScale_[static_cast<uint32_t>(page) * params_.geometry.scaleStride0 + off], copyIn, pad);
-                } else {
-                    AscendC::Duplicate(ubKScale_[localCol], 0.0f, segCols);
-                }
-                localCol += segCols;
-            }
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-            AscendC::PipeBarrier<PIPE_V>();
+            LoadKScaleRange(s2Start + colBegin, cols, batchIdx, 0);
         }
         const uint32_t scoreElemOffset = scoreBufferIdx * scoreElems_;
         bool integratedRowMask = false;
         if constexpr (kRowSplit) {
-            if (maskActive && mask_.maskMode == 3) {
+            if (maskActive && params_.mask.maskMode == 3) {
                 integratedRowMask = true;
                 uint32_t rowCols[4] = {cols, cols, cols, cols};
                 const uint32_t tileBase = s2Start + colBegin - reqKStart;
@@ -386,7 +366,7 @@ public:
                         rowCols[row] = 0U;
                     } else {
                         const uint32_t visible = SparseIndexer::Common::Block::Mask3VisibleLen(
-                            localQ, qAct, kAct, mask_.cmpRatio, residual);
+                            localQ, qAct, kAct, params_.mask.cmpRatio, residual);
                         rowCols[row] = visible > tileBase
                             ? AscendC::Std::min(cols, visible - tileBase)
                             : 0U;
@@ -415,7 +395,7 @@ public:
             ScaleHeadVF(rows, sourceStride, outStride, cols, kScaleOffset, scoreElemOffset);
             maskPolicy_.Apply(
                 rows, cols, outStride, colBegin, s2Start, requestQStart, qAct, kAct, reqKStart, residual,
-                maskActive, mask_.maskMode, mask_.cmpRatio);
+                maskActive, params_.mask.maskMode, params_.mask.cmpRatio);
         }
         SparseIndexer::Common::Block::DirectWorkspaceStore<float, float>::StoreTile(
             gmDst_[outputRowStart * s2_ + s2Start + colBegin], ubOut_, rows, cols, outStride, s2_,
@@ -439,7 +419,6 @@ private:
     AscendC::GlobalTensor<int32_t> const& gmBlockTable_;
     AscendC::GlobalTensor<float> const& gmDst_;
     Params params_{};
-    SparseIndexer::Common::Block::MaskRuntimeParams mask_{};
     uint32_t n1_{0};
     uint32_t s2_{0};
     uint32_t s1Tile_{0};
